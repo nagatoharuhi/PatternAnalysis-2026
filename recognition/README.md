@@ -8,9 +8,54 @@ The GFNet-inspired model divides each image into patches and uses learnable freq
 
 The evaluation addresses both classification performance and the confidence and ambiguity dilemma in automated triage. Accuracy, per-class precision and recall, macro-F1, and AUROC are used to compare predictive performance. Further analysis examines representative misclassifications, prediction confidence, and computational cost to assess the trade-off between model complexity and practical utility. The intended outcome is an evidence-based recommendation on the prototype’s limitations and the conditions under which predictions should be referred for human review.
 
-## 2. Dataset and Preprocessing
+## 2. Feasibility Review — GFNet for Alzheimer's Disease Classification
+This section records the initial feasibility review prepared for the midpoint check-off. It describes the proposed approach and preliminary evidence at that stage; the final implementation and experimental results are documented in the subsequent sections. CN is referred to as NC elsewhere in this report, following the dataset folder labels.
 
-### 2.1 Dataset Overview and Data Audit
+**COMP3710 Open-Ended Project | Domain: Medical Image Classification | Difficulty: Hard**
+
+### 2.1 User Need, Scope & Acceptance Criteria
+
+This project aims to develop a deep learning prototype to assist medical reviewers in distinguishing Alzheimer's Disease (AD) from Cognitively Normal (CN) cases using 2D T1-weighted brain MRI slices from the ADNI dataset. The system will compare a conventional CNN baseline with a Global Filter Network (GFNet), while investigating prediction confidence and identifying uncertain cases requiring expert review.
+
+**Acceptance criteria:**
+
+- Achieve at least 80% test accuracy for AD versus CN classification.
+- Compare GFNet against a CNN baseline using accuracy, per-class precision, recall, macro-F1, and AUROC.
+- Prevent patient-level data leakage across training, validation, and test sets.
+- Evaluate prediction confidence and investigate 3–5 representative failure cases.
+- Establish an empirical confidence threshold for referring uncertain predictions to human reviewers, and report inference latency and GPU memory usage.
+
+### 2.2 Model Choice & Course Concepts
+
+The project uses the ADNI dataset, comprising 2D MRI slices labelled AD or CN. A simple CNN will serve as the baseline, while GFNet is the selected advanced architecture (Hard Difficulty).
+
+GFNet replaces conventional self-attention with global frequency-domain filtering using the 2D Fast Fourier Transform (FFT), learnable frequency-domain filters, and inverse FFT. This approach enables global spatial information mixing. Relevant course concepts include convolutional neural networks, Fourier transforms, backpropagation, classification metrics, and model generalisation.
+
+Both models will be trained and evaluated using the same patient-independent data partitions.
+
+### 2.3 Preliminary Feasibility Evidence
+
+Initial data inspection identified 10,400 AD and 11,121 CN training slices, together with 4,460 AD and 4,540 CN test slices. Images are grayscale with a resolution of 256 × 240 pixels.
+
+Metadata analysis identified 680 unique subjects, with 216 subjects appearing in both the supplied training and test partitions. All examined image identifiers were successfully mapped to metadata, and no conflicting AD/CN subject labels were detected.
+
+This demonstrates a significant patient-level leakage risk in the supplied split. A new stratified, subject-level 70/15/15 training, validation, and test partition is proposed. Model training and computational feasibility testing remain pending.
+
+### 2.4 Risks, Budget & Fallback
+
+**Key risks:** Patient-level leakage, limited GPU availability, GFNet training cost, overfitting, and unreliable confidence estimates.
+
+**Mitigation:** Use patient-independent partitions, reduced image resolution where appropriate, smaller training batches, early stopping, and reproducible experiments.
+
+**Computing budget:** Google Colab GPU resources, with peak VRAM, epoch duration, and inference latency to be measured during initial experiments.
+
+**Next experiment:** Construct the patient-independent data splits, train a small CNN baseline, and benchmark GFNet training feasibility on a limited subset.
+
+**Fallback:** If the full GFNet architecture exceeds available resources, use a reduced-width GFNet retaining its core Fourier filtering mechanism, and report the computational trade-offs.
+
+## 3. Dataset and Preprocessing
+
+### 3.1 Dataset Overview and Data Audit
 
 This project uses the preprocessed ADNI dataset provided for the course, containing two-dimensional grayscale MRI slices labelled as Alzheimer’s disease (AD) or normal control (NC). The initial inventory contained 30,521 image records from 680 unique patients. Patient identifiers were extracted from the metadata and associated with individual image records using their image IDs. All image records were successfully mapped to patients, and no conflicting class labels were found within patients.
 
@@ -20,7 +65,7 @@ An audit of the original training and test folders identified 216 patients appea
 
 *Figure 1. Example grayscale MRI slices from the provided ADNI dataset: AD (left) and NC (right), shown before resizing and training augmentation. Labels follow the dataset annotations.*
 
-### 2.2 Patient-Level Data Splitting
+### 3.2 Patient-Level Data Splitting
 
 The dataset was repartitioned using class-stratified sampling at the patient level. First, 70% of patients were assigned to training. The remaining 30% were divided equally into validation and test sets. Both splitting operations used a random seed of 42.
 
@@ -37,7 +82,7 @@ The 70/15/15 proportions refer to patients rather than images. Image-level propo
 
 Both the CNN baseline and the GFNet-inspired model use these same splits. Validation loss is used to select the best checkpoint within each training run. The selected checkpoint is subsequently evaluated on the test set.
 
-### 2.3 Image Preprocessing
+### 3.3 Image Preprocessing
 
 Images are loaded as single-channel grayscale inputs and resized to 256 × 256 pixels. Pixel intensities are converted to floating-point tensors and normalized using a mean of 0.5 and a standard deviation of 0.5:
 
@@ -49,7 +94,7 @@ Here, $x$ is the pixel intensity after conversion to the range $[0,1]$. This map
 
 For efficient data loading, the image archives are extracted from Google Drive to local Colab storage. Local paths preserve each image’s original relative folder location, independently of its new split assignment. File-existence checks confirm that all images referenced by the final splits are available.
 
-### 2.4 Training Data Augmentation
+### 3.4 Training Data Augmentation
 
 The same augmentation pipeline is used for both models. Augmentation is applied only to training images.
 
