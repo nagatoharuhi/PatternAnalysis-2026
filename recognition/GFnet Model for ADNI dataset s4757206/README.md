@@ -232,10 +232,7 @@ Both models are trained from scratch. For each training batch, the model produce
 Epoch loss is calculated as the sample-weighted average of batch losses:
 
 $$
-L_{\mathrm{epoch}}
-=
-\frac{\sum_{b=1}^{B} n_b L_b}
-{\sum_{b=1}^{B} n_b},
+L_{\mathrm{epoch}} = \frac{\sum_{b=1}^{B} n_b L_b}{\sum_{b=1}^{B} n_b},
 $$
 
 where $L_b$ is the mean loss for batch $b$, and $n_b$ is the number of samples in that batch. This accounts for the potentially smaller final batch.
