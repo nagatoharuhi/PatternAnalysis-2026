@@ -178,14 +178,14 @@ This operation provides global spatial mixing within each channel. The subsequen
 Each block contains two residual connections. The first surrounds the global filter branch, while the second surrounds the MLP branch:
 
 $$
-Y = X + G\left(\operatorname{LN}_1(X)\right),
+Y = X + G(\mathrm{LN}_1(X))
 $$
 
 $$
-Z = Y + \operatorname{MLP}\left(\operatorname{LN}_2(Y)\right).
+Z = Y + \mathrm{MLP}(\mathrm{LN}_2(Y))
 $$
 
-Here, $\operatorname{LN}_1$ and $\operatorname{LN}_2$ are separate layer normalization operations. The MLP expands the feature dimension from 128 to 512, applies GELU and dropout, and projects the features back to 128 dimensions before a second dropout operation.
+Here, LN1 and LN2 are separate layer normalization operations. The MLP expands the feature dimension from 128 to 512, applies GELU and dropout, and projects the features back to 128 dimensions before a second dropout operation.
 
 The residual connections provide identity paths alongside the learned transformations. Their individual contribution to performance has not been established through a controlled ablation experiment.
 
