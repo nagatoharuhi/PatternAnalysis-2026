@@ -27,13 +27,21 @@ def parse_args():
     parser.add_argument("--image-root", required=True)
     parser.add_argument("--output-dir", required=True)
 
-# Optional epoch override; model-specific defaults are selected in main().
+    # Optional epoch override; model-specific defaults are selected in main().
     parser.add_argument("--epochs", type=int, default=None)
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--num-workers", type=int, default=8)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument(
         "--device", choices=["auto", "cpu", "cuda"], default="auto"
+    )
+
+    # Opt in to one test evaluation after validation-based checkpoint selection.
+    # Leaving this flag off preserves the original training-only behaviour.
+    parser.add_argument(
+        "--evaluate-test",
+        action="store_true",
+        help="Evaluate the best checkpoint on the test set after training.",
     )
 
     return parser.parse_args()
@@ -49,7 +57,7 @@ def set_seed(seed):
         torch.cuda.manual_seed_all(seed)
 
 
-# Reuse one loop for training and validation; an optimizer enables updates.
+# Reuse one loop for training, validation, or testing; an optimizer enables updates.
 def run_epoch(model, loader, criterion, device, optimizer=None):
     """Train or evaluate for one epoch using sample-weighted metrics."""
     training = optimizer is not None
@@ -59,26 +67,26 @@ def run_epoch(model, loader, criterion, device, optimizer=None):
     total_correct = 0
     total_samples = 0
 
-# Disable gradient tracking during validation to reduce memory usage.
+    # Disable gradient tracking during validation/testing to reduce memory usage.
     with torch.set_grad_enabled(training):
         for images, labels in loader:
             images = images.to(device)
             labels = labels.to(device)
 
-# Reset gradients before the next training update.
+            # Reset gradients before the next training update.
             if training:
                 optimizer.zero_grad()
 
-# Compute class logits and cross-entropy loss for the current batch.
+            # Compute class logits and cross-entropy loss for the current batch.
             outputs = model(images)
             loss = criterion(outputs, labels)
 
-# Backpropagate and update parameters only in training mode.
+            # Backpropagate and update parameters only in training mode.
             if training:
                 loss.backward()
                 optimizer.step()
 
-# Weight batch metrics by sample count to handle smaller final batches.
+            # Weight batch metrics by sample count to handle smaller final batches.
             batch_size = labels.size(0)
             total_loss += loss.item() * batch_size
             total_correct += (
@@ -142,7 +150,7 @@ def save_curves(history, best_epoch, output_path):
 def main():
     args = parse_args()
 
-# Use the experiment-specific training duration unless overridden.
+    # Use the experiment-specific training duration unless overridden.
     epochs = args.epochs
     if epochs is None:
         epochs = 10 if args.model == "cnn" else 30
@@ -150,7 +158,7 @@ def main():
     if epochs < 1 or args.batch_size < 1 or args.num_workers < 0:
         raise ValueError("Invalid epochs, batch size, or worker count.")
 
-# Select the requested device and reject unavailable CUDA.
+    # Select the requested device and reject unavailable CUDA.
     if args.device == "auto":
         device = torch.device(
             "cuda" if torch.cuda.is_available() else "cpu"
@@ -170,8 +178,8 @@ def main():
         )
     output_dir.mkdir(parents=True, exist_ok=True)
 
-# Load the fixed patient-independent splits and model-specific transforms.
-    train_loader, val_loader, _ = build_dataloaders(
+    # Load the fixed patient-independent splits and model-specific transforms.
+    train_loader, val_loader, test_loader = build_dataloaders(
         split_folder=args.split_dir,
         source_root=args.source_root,
         image_root=args.image_root,
@@ -184,7 +192,7 @@ def main():
     # Seed immediately before creating the model.
     set_seed(args.seed)
 
-# CNN baseline uses Adam with a fixed learning rate.
+    # CNN baseline uses Adam with a fixed learning rate.
     if args.model == "cnn":
         model = CNNBaseline().to(device)
         learning_rate = 0.001
@@ -196,7 +204,7 @@ def main():
         )
         scheduler = None
     else:
-# GFNet uses AdamW with weight decay and cosine learning-rate decay.
+        # GFNet uses AdamW with weight decay and cosine learning-rate decay.
         model = GFNet(
             image_size=256,
             patch_size=16,
@@ -219,11 +227,11 @@ def main():
             eta_min=1e-6,
         )
 
-# Use raw class logits with cross-entropy loss.
+    # Use raw class logits with cross-entropy loss.
     criterion = nn.CrossEntropyLoss()
     checkpoint_path = output_dir / f"{args.model}_best.pth"
 
-# Record the run settings, model size, and software/hardware details.
+    # Record the run settings, model size, and software/hardware details.
     config = {
         **vars(args),
         "epochs": epochs,
@@ -261,12 +269,12 @@ def main():
     print("Parameters:", config["parameters"])
     print("Checkpoint:", checkpoint_path)
 
-# Track training history and the lowest validation loss observed.
+    # Track training history and the lowest validation loss observed.
     history = []
     best_val_loss = float("inf")
     best_epoch = 0
 
-# Train and validate once per epoch.
+    # Train and validate once per epoch.
     for epoch in range(1, epochs + 1):
         learning_rate_used = optimizer.param_groups[0]["lr"]
 
@@ -277,7 +285,7 @@ def main():
             model, val_loader, criterion, device
         )
 
-# Stop if training or validation produces a non-finite loss.
+        # Stop if training or validation produces a non-finite loss.
         if not np.isfinite(train_loss) or not np.isfinite(val_loss):
             raise RuntimeError("Non-finite loss detected.")
 
@@ -290,7 +298,7 @@ def main():
             "val_accuracy": val_accuracy,
         })
 
-# Select and save the checkpoint using validation loss, not test metrics.
+        # Select and save the checkpoint using validation loss, not test metrics.
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             best_epoch = epoch
@@ -307,7 +315,7 @@ def main():
 
             print(f"Best model saved at epoch {epoch}")
 
-# Update the full per-epoch history after each epoch.
+        # Update the full per-epoch history after each epoch.
         with (output_dir / "history.json").open("w") as file:
             json.dump(history, file, indent=2)
 
@@ -321,11 +329,11 @@ def main():
             flush=True,
         )
 
-# Advance the learning-rate scheduler after the epoch is complete.
+        # Advance the learning-rate scheduler after the epoch is complete.
         if scheduler is not None:
             scheduler.step()
 
-# Write the final training curves to the run directory.
+    # Write the final training curves to the run directory.
     save_curves(
         history,
         best_epoch,
@@ -349,6 +357,36 @@ def main():
     print(f"Reloaded validation loss: {validation_loss:.4f}")
     print(f"Reloaded validation accuracy: {validation_accuracy:.2%}")
     print("Checkpoint:", checkpoint_path)
+
+
+    # The best checkpoint has already been reloaded above. Test data is used
+    # only here, after all training and checkpoint selection have finished.
+    # Omitting the optimizer makes run_epoch use eval mode and no gradients.
+    if args.evaluate_test:
+        test_loss, test_accuracy = run_epoch(
+            model, test_loader, criterion, device
+        )
+        if not np.isfinite(test_loss) or not np.isfinite(test_accuracy):
+            raise RuntimeError("Non-finite test metrics detected.")
+
+        test_metrics = {
+            "model": args.model,
+            "checkpoint": str(checkpoint_path),
+            "best_epoch": best_epoch,
+            "test_slices": len(test_loader.dataset),
+            "test_loss": test_loss,
+            "test_accuracy": test_accuracy,
+        }
+        with (output_dir / "test_metrics.json").open("w") as file:
+            json.dump(test_metrics, file, indent=2)
+
+        print("\nBest-checkpoint test results")
+        print("Test slices:", test_metrics["test_slices"])
+        print(f"Test loss: {test_loss:.4f}")
+        print(f"Test accuracy: {test_accuracy:.2%}")
+        print("Saved:", output_dir / "test_metrics.json")
+        # Detailed class metrics, confusion matrices and ROC curves remain
+        # available through predict.py; no weights are updated by testing.
 
 
 if __name__ == "__main__":

@@ -428,7 +428,22 @@ The model predicted AD with 50.07% confidence. This prediction lies very close t
 
 The displayed slices vary in shape, contrast, and peripheral appearance. Such variation may affect classification, but these examples do not establish causal explanations for the errors or demonstrate specific disease-related anatomical changes. The model receives individual slices and does not integrate information across the complete scan.
 
-These cases support investigating a referral rule for uncertain predictions while also demonstrating its limitations. A confidence-based rule could flag Cases 3 and 4, but high-confidence errors such as Cases 1 and 2 would remain. Therefore, retained-set error rates and coverage must be measured before drawing conclusions about the usefulness of automated triage.
+**Potential contributing factors and follow-up checks.**
+
+The following explanations are hypotheses rather than confirmed causes
+of the selected errors.
+
+| Potential factor | Motivation | Follow-up check |
+|---|---|---|
+| Limited information in individual slices | The model predicts from one slice without integrating information across the scan. | Inspect predictions across slices from the same patient and compare slice-level predictions with patient-level aggregation. |
+| Variation in image appearance | The selected images differ in shape, contrast, and peripheral texture; Case 3 contains visible texture around the brain boundary. | Compare incorrect predictions with correctly classified slices of similar appearance, then evaluate controlled preprocessing changes on validation data. |
+| Misalignment between confidence and correctness | Cases 1 and 2 receive high confidence despite being incorrect. | Examine reliability diagrams and assess whether validation-fitted probability calibration improves confidence reliability on independent data. |
+
+These checks would help distinguish possible failure mechanisms.
+The current examples alone cannot establish that a particular image
+feature caused an error or that a dataset annotation is incorrect.
+
+These cases support investigating a referral rule for uncertain predictions while also demonstrating its limitations. A rule referring predictions with confidence below 0.90 would flag Cases 3 and 4, but would retain the incorrect predictions in Cases 1 and 2. Therefore, retained-set error rates and coverage must be measured before drawing conclusions about the usefulness of automated triage.
 
 ### 7.3 Validation-Based Referral Rule
 
@@ -548,7 +563,7 @@ Several limitations qualify these findings:
 - Test results informed some exploratory development decisions, so the evaluation was not a completely untouched confirmatory test.
 - Confidence filtering was assessed, but formal probability calibration and out-of-distribution robustness were not evaluated.
 
-Potential label errors were also reported during development, but were not independently verified. Checks confirmed agreement between CSV, folder, and metadata labels; this does not establish the correctness of the underlying diagnostic annotations if these sources share the same labels. No verified corrected label set was incorporated. Label quality is therefore a possible limitation, but cannot be identified as the cause of the failure to reach 80% accuracy.
+Potential label errors were also reported during development, but were not independently verified. Checks confirmed that image records were mapped to patient identifiers and that no conflicting class labels were found within patients. These checks do not independently verify the correctness of the underlying diagnostic annotations. this does not establish the correctness of the underlying diagnostic annotations if these sources share the same labels. No verified corrected label set was incorporated. Label quality is therefore a possible limitation, but cannot be identified as the cause of the failure to reach 80% accuracy.
 
 ### 9.3 Answer to the Engineering Dilemma and Recommendation
 
@@ -587,7 +602,7 @@ These versions describe the environment used for script verification. Exact nume
 |---|---|
 | `modules.py` | Defines the CNN baseline, global filter layer, residual block, and GFNet-inspired classifier |
 | `dataset.py` | Implements patient-level splitting, split validation, image-path resolution, transforms, datasets, and DataLoaders |
-| `train.py` | Trains a selected model, evaluates validation performance, and saves the best checkpoint and training history |
+| `train.py` | Trains a selected model, validates performance, saves the best checkpoint and training history, and optionally evaluates the best checkpoint on the test set. |
 | `predict.py` | Loads a saved checkpoint and generates test metrics, prediction records, a confusion matrix, and a ROC curve |
 
 The project was initially developed in Jupyter notebooks on Google
@@ -723,7 +738,7 @@ For example, start a new CNN training run in Colab with:
 
 For GFNet, change `--model` to `gfnet` and select a different output directory.
 
-The script saves the checkpoint with the lowest validation loss, together with `config.json`, `history.json`, `best_metrics.json`, and `training_curves.png`. Test evaluation is performed separately using `predict.py`.
+The script saves the checkpoint with the lowest validation loss, together with `config.json`, `history.json`, `best_metrics.json`, and `training_curves.png`. Adding `--evaluate-test` evaluates the best checkpoint on the test set after training and saves loss and accuracy to `test_metrics.json`. For detailed classification metrics, confusion matrices, and ROC curves, run `predict.py` separately.
 
 Saved checkpoints contain model weights only. They do not contain the optimizer and scheduler states required for exact training resumption.
 
