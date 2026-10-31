@@ -563,7 +563,7 @@ Several limitations qualify these findings:
 - Test results informed some exploratory development decisions, so the evaluation was not a completely untouched confirmatory test.
 - Confidence filtering was assessed, but formal probability calibration and out-of-distribution robustness were not evaluated.
 
-Potential label errors were also reported during development, but were not independently verified. Checks confirmed that image records were mapped to patient identifiers and that no conflicting class labels were found within patients. These checks do not independently verify the correctness of the underlying diagnostic annotations. this does not establish the correctness of the underlying diagnostic annotations if these sources share the same labels. No verified corrected label set was incorporated. Label quality is therefore a possible limitation, but cannot be identified as the cause of the failure to reach 80% accuracy.
+Potential label errors were also reported during development, but were not independently verified. Checks confirmed that image records were mapped to patient identifiers and that no conflicting class labels were found within patients. These checks do not independently verify the correctness of the underlying diagnostic annotations. No verified corrected label set was incorporated. Label quality is therefore a possible limitation, but cannot be identified as the cause of the failure to reach 80% accuracy.
 
 ### 9.3 Answer to the Engineering Dilemma and Recommendation
 
