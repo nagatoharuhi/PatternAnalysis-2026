@@ -17,6 +17,7 @@ from dataset import build_dataloaders
 from modules import CNNBaseline, GFNet
 
 
+# Parse the training configuration from command-line arguments.
 def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
 
@@ -26,6 +27,7 @@ def parse_args():
     parser.add_argument("--image-root", required=True)
     parser.add_argument("--output-dir", required=True)
 
+# Optional epoch override; model-specific defaults are selected in main().
     parser.add_argument("--epochs", type=int, default=None)
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--num-workers", type=int, default=8)
@@ -37,6 +39,7 @@ def parse_args():
     return parser.parse_args()
 
 
+# Seed Python, NumPy, and PyTorch random number generators.
 def set_seed(seed):
     random.seed(seed)
     np.random.seed(seed)
@@ -46,6 +49,7 @@ def set_seed(seed):
         torch.cuda.manual_seed_all(seed)
 
 
+# Reuse one loop for training and validation; an optimizer enables updates.
 def run_epoch(model, loader, criterion, device, optimizer=None):
     """Train or evaluate for one epoch using sample-weighted metrics."""
     training = optimizer is not None
@@ -55,21 +59,26 @@ def run_epoch(model, loader, criterion, device, optimizer=None):
     total_correct = 0
     total_samples = 0
 
+# Disable gradient tracking during validation to reduce memory usage.
     with torch.set_grad_enabled(training):
         for images, labels in loader:
             images = images.to(device)
             labels = labels.to(device)
 
+# Reset gradients before the next training update.
             if training:
                 optimizer.zero_grad()
 
+# Compute class logits and cross-entropy loss for the current batch.
             outputs = model(images)
             loss = criterion(outputs, labels)
 
+# Backpropagate and update parameters only in training mode.
             if training:
                 loss.backward()
                 optimizer.step()
 
+# Weight batch metrics by sample count to handle smaller final batches.
             batch_size = labels.size(0)
             total_loss += loss.item() * batch_size
             total_correct += (
@@ -86,6 +95,7 @@ def run_epoch(model, loader, criterion, device, optimizer=None):
     )
 
 
+# Save loss and accuracy curves, marking the best validation epoch.
 def save_curves(history, best_epoch, output_path):
     epochs = [row["epoch"] for row in history]
 
@@ -132,6 +142,7 @@ def save_curves(history, best_epoch, output_path):
 def main():
     args = parse_args()
 
+# Use the experiment-specific training duration unless overridden.
     epochs = args.epochs
     if epochs is None:
         epochs = 10 if args.model == "cnn" else 30
@@ -139,6 +150,7 @@ def main():
     if epochs < 1 or args.batch_size < 1 or args.num_workers < 0:
         raise ValueError("Invalid epochs, batch size, or worker count.")
 
+# Select the requested device and reject unavailable CUDA.
     if args.device == "auto":
         device = torch.device(
             "cuda" if torch.cuda.is_available() else "cpu"
@@ -158,6 +170,7 @@ def main():
         )
     output_dir.mkdir(parents=True, exist_ok=True)
 
+# Load the fixed patient-independent splits and model-specific transforms.
     train_loader, val_loader, _ = build_dataloaders(
         split_folder=args.split_dir,
         source_root=args.source_root,
@@ -171,6 +184,7 @@ def main():
     # Seed immediately before creating the model.
     set_seed(args.seed)
 
+# CNN baseline uses Adam with a fixed learning rate.
     if args.model == "cnn":
         model = CNNBaseline().to(device)
         learning_rate = 0.001
@@ -182,6 +196,7 @@ def main():
         )
         scheduler = None
     else:
+# GFNet uses AdamW with weight decay and cosine learning-rate decay.
         model = GFNet(
             image_size=256,
             patch_size=16,
@@ -204,9 +219,11 @@ def main():
             eta_min=1e-6,
         )
 
+# Use raw class logits with cross-entropy loss.
     criterion = nn.CrossEntropyLoss()
     checkpoint_path = output_dir / f"{args.model}_best.pth"
 
+# Record the run settings, model size, and software/hardware details.
     config = {
         **vars(args),
         "epochs": epochs,
@@ -244,10 +261,12 @@ def main():
     print("Parameters:", config["parameters"])
     print("Checkpoint:", checkpoint_path)
 
+# Track training history and the lowest validation loss observed.
     history = []
     best_val_loss = float("inf")
     best_epoch = 0
 
+# Train and validate once per epoch.
     for epoch in range(1, epochs + 1):
         learning_rate_used = optimizer.param_groups[0]["lr"]
 
@@ -258,6 +277,7 @@ def main():
             model, val_loader, criterion, device
         )
 
+# Stop if training or validation produces a non-finite loss.
         if not np.isfinite(train_loss) or not np.isfinite(val_loss):
             raise RuntimeError("Non-finite loss detected.")
 
@@ -270,6 +290,7 @@ def main():
             "val_accuracy": val_accuracy,
         })
 
+# Select and save the checkpoint using validation loss, not test metrics.
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             best_epoch = epoch
@@ -286,6 +307,7 @@ def main():
 
             print(f"Best model saved at epoch {epoch}")
 
+# Update the full per-epoch history after each epoch.
         with (output_dir / "history.json").open("w") as file:
             json.dump(history, file, indent=2)
 
@@ -299,9 +321,11 @@ def main():
             flush=True,
         )
 
+# Advance the learning-rate scheduler after the epoch is complete.
         if scheduler is not None:
             scheduler.step()
 
+# Write the final training curves to the run directory.
     save_curves(
         history,
         best_epoch,
