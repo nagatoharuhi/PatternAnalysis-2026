@@ -108,3 +108,163 @@ Affine transformation is applied after resizing. Random erasing and elastic tran
 
 These augmentations introduce variation in image position, scale, visibility, and local geometry. Their individual contributions have not been isolated through ablation experiments, so this report does not attribute performance improvements to any single augmentation.
 
+## 4. Model Architectures
+
+### 4.1 CNN Baseline
+
+A compact CNN is implemented as the baseline for comparison with the GFNet-inspired model. It receives a single-channel 256 × 256 MRI slice and produces two logits corresponding to NC and AD.
+
+The feature extractor contains three convolutional stages. Each stage consists of a 3 × 3 convolution with stride 1 and padding 1, a ReLU activation, and a 2 × 2 max-pooling operation with stride 2. The channel dimensions increase from 1 to 32, 64, and 128.
+
+| Component | Configuration | Output shape, excluding batch |
+|---|---|---|
+| Input | Grayscale MRI slice | 1 × 256 × 256 |
+| Convolutional stage 1 | Conv 1 → 32, ReLU, max pooling | 32 × 128 × 128 |
+| Convolutional stage 2 | Conv 32 → 64, ReLU, max pooling | 64 × 64 × 64 |
+| Convolutional stage 3 | Conv 64 → 128, ReLU, max pooling | 128 × 32 × 32 |
+| Global average pooling | Adaptive average pooling to 1 × 1 | 128 × 1 × 1 |
+| Classifier | Flatten and linear projection | 2 |
+
+Global average pooling summarises each feature channel over the spatial dimensions. A linear layer maps the resulting 128-dimensional representation to the two output logits. This avoids a large fully connected layer operating on flattened spatial feature maps.
+
+The baseline contains **92,930 trainable parameters**. Its compact architecture provides a reference for assessing whether the additional complexity of the GFNet-inspired model improves classification performance.
+
+### 4.2 GFNet-Inspired Architecture
+
+The advanced model uses learnable frequency-domain filters to mix information across a spatial grid of patch features. The implementation follows the global filtering concept of GFNet and uses separate residual connections around the filtering and MLP branches.
+
+Each 256 × 256 input image is divided into non-overlapping 16 × 16 patches using a convolution with kernel size 16 and stride 16. Each patch is projected into a 128-dimensional feature vector, producing a 16 × 16 feature grid containing 256 patch representations.
+
+A learnable positional embedding is added to this grid, followed by dropout. The features then pass through eight global filter blocks. A final layer normalization and spatial average pooling produce a 128-dimensional image representation, which is mapped to two output logits.
+
+| Component | Configuration |
+|---|---|
+| Input | Single-channel 256 × 256 MRI slice |
+| Patch embedding | Conv2d, kernel size 16, stride 16, 128 output channels |
+| Feature grid | 16 × 16 spatial positions |
+| Positional embedding | Learnable tensor of shape 1 × 16 × 16 × 128 |
+| Global filter blocks | 8 |
+| Embedding dimension | 128 |
+| MLP hidden dimension | 512 |
+| Activation | GELU |
+| Dropout probability | 0.1 |
+| Final normalization | LayerNorm |
+| Pooling | Average over the spatial grid |
+| Classifier | Linear projection from 128 features to 2 logits |
+
+The model contains **1,418,882 trainable parameters**, approximately 15.3 times the parameter count of the CNN baseline.
+
+### 4.3 Global Filter Layer
+
+The global filter operates independently on each feature channel. First, a two-dimensional real FFT transforms the spatial feature map into the frequency domain. The resulting coefficients are multiplied element-wise by learnable complex-valued weights. An inverse FFT then converts the filtered features back into the spatial domain:
+
+$$
+G(X) =
+\mathcal{F}^{-1}
+\left(
+W \odot \mathcal{F}(X)
+\right),
+$$
+
+where $\mathcal{F}$ denotes the two-dimensional Fourier transform, $W$ contains the learnable complex-valued filter weights, and $\odot$ denotes element-wise multiplication.
+
+In the implementation, `torch.fft.rfft2` and `torch.fft.irfft2` use orthonormal normalization. For a 16 × 16 spatial grid, the stored real-FFT representation has dimensions 16 × 9 per channel. The real and imaginary components of the filter weights are stored in a parameter tensor of shape 128 × 16 × 9 × 2.
+
+This operation provides global spatial mixing within each channel. The subsequent MLP mixes information across feature channels at each spatial position.
+
+### 4.4 Residual Block Design
+
+Each block contains two residual connections. The first surrounds the global filter branch, while the second surrounds the MLP branch:
+
+$$
+Y = X + G\left(\operatorname{LN}_1(X)\right),
+$$
+
+$$
+Z = Y + \operatorname{MLP}\left(\operatorname{LN}_2(Y)\right).
+$$
+
+Here, $\operatorname{LN}_1$ and $\operatorname{LN}_2$ are separate layer normalization operations. The MLP expands the feature dimension from 128 to 512, applies GELU and dropout, and projects the features back to 128 dimensions before a second dropout operation.
+
+The residual connections provide identity paths alongside the learned transformations. Their individual contribution to performance has not been established through a controlled ablation experiment.
+
+### 4.5 Classification Outputs
+
+Both models return two unnormalized logits. Class 0 represents NC, and class 1 represents AD. Cross-entropy loss is applied directly to the logits during training.
+
+For evaluation, the predicted class is obtained using `argmax`. Softmax is applied to obtain class probabilities, and the probability assigned to AD is used to calculate AUROC. These probabilities are model confidence scores and are not assumed to be calibrated estimates of diagnostic reliability.
+
+## 5. Experimental Setup
+
+### 5.1 Shared Experimental Conditions
+
+Both models use the same patient-independent training, validation, and test partitions described in Section 3. They also share the same input resolution, normalization, training augmentation pipeline, and batch size.
+
+Experiments are conducted in Google Colab using an NVIDIA A100-SXM4 GPU with 40 GB of memory. Images are loaded from local Colab storage after extraction from Google Drive.
+
+| Setting | CNN baseline | GFNet-inspired model |
+|---|---|---|
+| Input size | 1 × 256 × 256 | 1 × 256 × 256 |
+| Batch size | 32 | 32 |
+| Configured training epochs | 30 | 30 |
+| Loss function | CrossEntropyLoss | CrossEntropyLoss |
+| Optimizer | Adam | AdamW |
+| Initial learning rate | 0.001 | 0.0003 |
+| Weight decay | 0 | 0.0005 |
+| Learning-rate scheduler | None | CosineAnnealingLR |
+| Minimum learning rate | Not applicable | 0.000001 |
+| Checkpoint selection | Lowest validation loss | Lowest validation loss |
+
+Training data are shuffled at each epoch. Validation and test data are evaluated without shuffling or random augmentation. Each DataLoader uses two worker processes and pinned memory.
+
+The same split and evaluation procedures support a comparison of the two implemented systems. However, the optimizers and learning-rate schedules differ, so performance differences cannot be attributed exclusively to model architecture.
+
+### 5.2 Training Procedure
+
+Both models are trained from scratch. For each training batch, the model produces two logits, and cross-entropy loss is calculated against the integer class labels. Gradients are computed through backpropagation, and the optimizer updates the model parameters.
+
+Epoch loss is calculated as the sample-weighted average of batch losses:
+
+$$
+L_{\mathrm{epoch}}
+=
+\frac{\sum_{b=1}^{B} n_b L_b}
+{\sum_{b=1}^{B} n_b},
+$$
+
+where $L_b$ is the mean loss for batch $b$, and $n_b$ is the number of samples in that batch. This accounts for the potentially smaller final batch.
+
+Accuracy is calculated as the number of correct predictions divided by the total number of evaluated images. Training and validation losses and accuracies are recorded after each epoch.
+
+For GFNet, the learning rate is updated after each epoch using cosine annealing, with `T_max = 30` and `eta_min = 1e-6`. The CNN baseline uses a constant learning rate.
+
+### 5.3 Validation and Checkpoint Selection
+
+After each training epoch, the model is evaluated on the validation set using evaluation mode and disabled gradient computation. Whenever validation loss improves, the model weights are saved.
+
+The best checkpoint is therefore defined by the lowest validation loss, rather than the highest training accuracy or the final training epoch. Before final evaluation, the saved checkpoint is reloaded and the model is placed in evaluation mode.
+
+Although early stopping was considered in the initial feasibility review, the implemented training procedure uses a fixed budget of 30 epochs and retains the checkpoint with the lowest validation loss.
+
+### 5.4 Reproducibility
+
+A random seed of 42 is used for patient-level splitting and for NumPy and PyTorch random number generation. CUDA random seeds are also set. The CNN notebook additionally seeds Python's `random` module.
+
+Seeds help reduce variation between runs, but the experiments do not enforce fully deterministic GPU execution. Consequently, exact numerical reproducibility across hardware or software environments is not guaranteed.
+
+### 5.5 Evaluation Protocol
+
+The selected checkpoints are evaluated on the same test set of 4,440 MRI slices from 102 patients. Metrics are calculated at the slice level.
+
+The evaluation includes:
+
+- Overall accuracy.
+- Per-class precision, recall, and F1-score.
+- Macro-averaged F1-score.
+- Balanced accuracy.
+- AUROC using the predicted probability of AD.
+- Confusion matrices and ROC curves.
+
+AD is treated as the positive class. Therefore, AD recall measures the proportion of AD-labelled slices correctly classified, while NC recall measures the proportion of NC-labelled slices correctly classified.
+
+The final partitions are patient-independent. However, test results were inspected during exploratory development and informed some subsequent experimental choices. The reported test performance therefore has a limitation associated with repeated test-set feedback and should not be interpreted as a completely untouched confirmatory evaluation.
