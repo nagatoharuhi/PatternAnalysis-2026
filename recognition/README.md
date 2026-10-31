@@ -547,3 +547,140 @@ Further work should prioritise the following:
 5. Measure end-to-end inference cost and investigate whether global filtering provides benefits under these revised conditions.
 
 The evidence supports retaining the CNN baseline while investigating the limitations of both models. Additional architectural complexity should be justified by reproducible improvements in predictive performance, confidence reliability, or operational efficiency.
+
+## 10. Reproducibility and Usage
+
+### 10.1 Verified Environment
+
+The standalone prediction scripts were verified in Google Colab using the following environment:
+
+| Component | Version |
+|---|---|
+| Python | 3.13.16 |
+| PyTorch | 2.11.0+cu130 |
+| torchvision | 0.26.0+cu130 |
+| NumPy | 2.1.3 |
+| pandas | 2.2.3 |
+| scikit-learn | 1.6.1 |
+| Pillow | 11.3.0 |
+| Matplotlib | 3.10.0 |
+| PyTorch CUDA build | 13.0 |
+| GPU | NVIDIA A100-SXM4-40GB |
+
+These versions describe the environment used for script verification. Exact numerical reproducibility across different hardware and software environments is not guaranteed.
+
+### 10.2 Code Organisation
+
+| File | Purpose |
+|---|---|
+| `modules.py` | Defines the CNN baseline, global filter layer, residual block, and GFNet-inspired classifier |
+| `dataset.py` | Implements patient-level splitting, split validation, image-path resolution, transforms, datasets, and DataLoaders |
+| `train.py` | Trains a selected model, evaluates validation performance, and saves the best checkpoint and training history |
+| `predict.py` | Loads a saved checkpoint and generates test metrics, prediction records, a confusion matrix, and a ROC curve |
+
+The four Python files must be placed in the same directory. The notebooks retain the original exploratory workflow and the additional confidence, referral, failure-case, and resource analyses.
+
+### 10.3 Data Preparation
+
+The data exploration notebook constructs an image inventory containing image paths, image IDs, patient IDs, and class labels. The preprocessing notebook removes the identified duplicate record and creates the final patient-independent split CSVs:
+
+- `train.csv`
+- `val.csv`
+- `test.csv`
+
+The standalone scripts require these CSVs. Required columns include `patient_id`, `image_id`, `label`, and `path`. Class labels are mapped as NC = 0 and AD = 1.
+
+Images must be available before running training or prediction. In the verified Colab workflow, the image archives were extracted into `/content/mri_cache`, preserving the original relative directory structure.
+
+The path arguments have different purposes:
+
+- `--split-dir`: directory containing the three split CSVs.
+- `--source-root`: original image root appearing in the CSV paths.
+- `--image-root`: current root containing the extracted images.
+
+For example, a CSV path ending in `train/AD/example.jpeg` is mapped to the same relative location under `--image-root`. The physical source folder does not determine the final experimental split; split membership is defined by the CSV.
+
+The scripts check patient independence and image-path overlap. Before loading test images, `predict.py` also verifies that the referenced files exist.
+
+Datasets and model weights are not included in the Git repository. Users must obtain the course dataset and either provide compatible checkpoints or train the models.
+
+### 10.4 Verified Checkpoint Evaluation
+
+The commands below were verified in Colab after mounting Google Drive and extracting the images. They use the project paths from the experiments; other users should substitute their own paths.
+
+In a Colab cell, first enter the script directory:
+
+```python
+%cd /content/drive/MyDrive/COMP3710/project/scripts
+```
+
+Evaluate the CNN checkpoint:
+
+```python
+!python predict.py \
+    --model cnn \
+    --checkpoint "/content/drive/MyDrive/COMP3710/project/models/cnn_baseline_best.pth" \
+    --split-dir "/content/drive/MyDrive/COMP3710/project/dataset/splits" \
+    --source-root "/content/drive/MyDrive/COMP3710/project/dataset/raw/ADNI/AD_NC" \
+    --image-root "/content/mri_cache" \
+    --output-dir "/content/drive/MyDrive/COMP3710/project/results/cnn_script_check" \
+    --device cuda
+```
+
+Evaluate the GFNet checkpoint:
+
+```python
+!python predict.py \
+    --model gfnet \
+    --checkpoint "/content/drive/MyDrive/COMP3710/project/gfnet_best_1.pth" \
+    --split-dir "/content/drive/MyDrive/COMP3710/project/dataset/splits" \
+    --source-root "/content/drive/MyDrive/COMP3710/project/dataset/raw/ADNI/AD_NC" \
+    --image-root "/content/mri_cache" \
+    --output-dir "/content/drive/MyDrive/COMP3710/project/results/gfnet_script_check" \
+    --device cuda
+```
+
+In a terminal, omit the leading `!` and use `cd` instead of `%cd`.
+
+Each command requires a new or empty output directory. Repeated evaluations should use a different output directory to preserve previous results.
+
+Both standalone evaluations reproduced the reported notebook metrics to the displayed precision:
+
+| Model | Accuracy | Balanced accuracy | Macro F1 | AUROC |
+|---|---:|---:|---:|---:|
+| CNN | 72.36% | 71.25% | 0.7141 | 0.7939 |
+| GFNet | 71.51% | 70.47% | 0.7061 | 0.7789 |
+
+The prediction script saves:
+
+- `metrics.json`
+- `classification_report.csv`
+- `test_predictions.csv`
+- `confusion_matrix.png`
+- `roc_curve.png`
+
+Prediction records preserve the original test CSV order and include image identifiers, labels, AD probabilities, confidence scores, and correctness indicators.
+
+### 10.5 Training from Scratch
+
+The training script supports both models using the experiment-specific settings described in Section 5. The default training budgets are 10 epochs for CNN and 30 epochs for GFNet.
+
+For example, start a new CNN training run in Colab with:
+
+```python
+!python train.py \
+    --model cnn \
+    --split-dir "/content/drive/MyDrive/COMP3710/project/dataset/splits" \
+    --source-root "/content/drive/MyDrive/COMP3710/project/dataset/raw/ADNI/AD_NC" \
+    --image-root "/content/mri_cache" \
+    --output-dir "/content/drive/MyDrive/COMP3710/project/results/cnn_training_run_01" \
+    --device cuda
+```
+
+For GFNet, change `--model` to `gfnet` and select a different output directory.
+
+The script saves the checkpoint with the lowest validation loss, together with `config.json`, `history.json`, `best_metrics.json`, and `training_curves.png`. Test evaluation is performed separately using `predict.py`.
+
+Saved checkpoints contain model weights only. They do not contain the optimizer and scheduler states required for exact training resumption.
+
+The standalone files passed syntax checks, and checkpoint inference was verified for both models. The complete standalone training workflow has not been rerun end to end; the reported training experiments were performed in the notebooks. Fresh training runs may differ numerically because of execution order and nondeterministic GPU operations.
