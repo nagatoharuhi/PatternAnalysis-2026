@@ -96,17 +96,18 @@ For efficient data loading, the image archives are extracted from Google Drive t
 
 ### 3.4 Training Data Augmentation
 
-The same augmentation pipeline is used for both models. Augmentation is applied only to training images.
+Training augmentation differs between the two models. Both use the same deterministic resizing and normalization for validation and testing.
 
-| Augmentation | Configuration |
-|---|---|
-| Random affine transformation | Rotation up to ±10°, translation up to 5% in each direction, and scale factor between 0.98 and 1.02 |
-| Random erasing | Probability 0.4; area fraction 0.01–0.10; aspect ratio 0.5–2.0 |
-| Elastic transformation | Probability 0.3; alpha = 10.0; sigma = 3.0 |
+| Augmentation | CNN baseline | GFNet-inspired model |
+|---|---|---|
+| Random horizontal flip | Not used | Probability 0.5 |
+| Random rotation | Up to ±10° | Up to ±10° |
+| Random translation | Up to 5% in each direction | Not used |
+| Random scaling | Scale factor 0.98–1.02 | Not used |
+| Random erasing | Probability 0.4; area fraction 0.01–0.10; aspect ratio 0.5–2.0 | Not used |
+| Elastic transformation | Probability 0.3; alpha = 10.0; sigma = 3.0 | Not used |
 
-Affine transformation is applied after resizing. Random erasing and elastic transformation are applied after tensor conversion and before normalization. Bilinear interpolation and zero filling are used for affine and elastic transformations.
-
-These augmentations introduce variation in image position, scale, visibility, and local geometry. Their individual contributions have not been isolated through ablation experiments, so this report does not attribute performance improvements to any single augmentation.
+Augmentation is applied only to training images. Its individual effects have not been isolated through controlled ablation experiments. Because the augmentation pipelines differ, the comparison evaluates the two implemented systems rather than isolating the effect of architecture alone.
 
 ## 4. Model Architectures
 
@@ -196,9 +197,9 @@ For evaluation, the predicted class is obtained using `argmax`. Softmax is appli
 
 ## 5. Experimental Setup
 
-### 5.1 Shared Experimental Conditions
+### 5.1 Shared Experimental Conditions and Model-Specific Settings
 
-Both models use the same patient-independent training, validation, and test partitions described in Section 3. They also share the same input resolution, normalization, training augmentation pipeline, and batch size.
+Both models use the same patient-independent training, validation, and test partitions described in Section 3. They share the same input resolution, normalization, batch size, and deterministic validation and test preprocessing. Their training augmentation pipelines differ, as detailed in Section 3.4.
 
 Experiments are conducted in Google Colab using an NVIDIA A100-SXM4 GPU with 40 GB of memory. Images are loaded from local Colab storage after extraction from Google Drive.
 
@@ -206,18 +207,23 @@ Experiments are conducted in Google Colab using an NVIDIA A100-SXM4 GPU with 40 
 |---|---|---|
 | Input size | 1 × 256 × 256 | 1 × 256 × 256 |
 | Batch size | 32 | 32 |
-| Configured training epochs | 30 | 30 |
+| Training epochs | 30 | 30 |
 | Loss function | CrossEntropyLoss | CrossEntropyLoss |
 | Optimizer | Adam | AdamW |
 | Initial learning rate | 0.001 | 0.0003 |
 | Weight decay | 0 | 0.0005 |
 | Learning-rate scheduler | None | CosineAnnealingLR |
+| Scheduler T_max | Not applicable | 30 epochs |
 | Minimum learning rate | Not applicable | 0.000001 |
+| DataLoader workers | 2 | 8 |
+| Pinned memory | Enabled | Enabled |
 | Checkpoint selection | Lowest validation loss | Lowest validation loss |
 
-Training data are shuffled at each epoch. Validation and test data are evaluated without shuffling or random augmentation. Each DataLoader uses two worker processes and pinned memory.
+The CNN training pipeline includes random rotation, translation, scaling, erasing, and elastic deformation. The GFNet training pipeline uses random horizontal flipping and rotation. Neither model applies random augmentation during validation or testing.
 
-The same split and evaluation procedures support a comparison of the two implemented systems. However, the optimizers and learning-rate schedules differ, so performance differences cannot be attributed exclusively to model architecture.
+Training data are shuffled at each epoch. Validation and test data are evaluated without shuffling.
+
+The shared data partitions and evaluation procedures support a comparison of the two implemented systems. However, the models differ in architecture, training augmentation, optimizer, and learning-rate schedule. Therefore, performance differences cannot be attributed exclusively to model architecture.
 
 ### 5.2 Training Procedure
 
@@ -268,3 +274,183 @@ The evaluation includes:
 AD is treated as the positive class. Therefore, AD recall measures the proportion of AD-labelled slices correctly classified, while NC recall measures the proportion of NC-labelled slices correctly classified.
 
 The final partitions are patient-independent. However, test results were inspected during exploratory development and informed some subsequent experimental choices. The reported test performance therefore has a limitation associated with repeated test-set feedback and should not be interpreted as a completely untouched confirmatory evaluation.
+
+## 6. Results and Comparison
+
+### 6.1 Training and Model Selection
+
+Both models completed 30 training epochs. Checkpoints were selected using the lowest validation loss and reloaded before test evaluation.
+
+| Metric | CNN baseline | GFNet-inspired model |
+|---|---:|---:|
+| Completed epochs | 30 | 30 |
+| Best epoch | 9 | 15 |
+| Best validation loss | 0.4664 | 0.5618 |
+| Validation accuracy at selected checkpoint | 78.41% | 72.71% |
+| Final-epoch training accuracy | 80.19% | 82.80% |
+| Final-epoch validation accuracy | 70.27% | 70.58% |
+
+Both models continued to improve on the training set after their best validation checkpoints, without corresponding improvements in validation loss. For GFNet, training loss decreased from 0.4962 at epoch 15 to 0.3830 at epoch 30, while validation loss increased from 0.5618 to 0.6554. This pattern is consistent with overfitting and supports evaluating the selected checkpoint rather than the final-epoch weights.
+
+### 6.2 Test Performance
+
+Both selected checkpoints were evaluated on the same 4,440 test slices from 102 patients.
+
+| Metric | CNN baseline | GFNet-inspired model |
+|---|---:|---:|
+| Test loss | 0.5577 | 0.5801 |
+| Accuracy | 71.82% | 71.51% |
+| Balanced accuracy | 70.98% | 70.47% |
+| Macro precision | 0.7175 | 0.7163 |
+| Macro recall | 0.7098 | 0.7047 |
+| Macro F1 | 0.7113 | 0.7061 |
+| AUROC | 0.7869 | 0.7789 |
+
+The CNN achieved slightly higher accuracy, balanced accuracy, macro-F1, and AUROC in this experiment. Its accuracy exceeded GFNet by approximately 0.32 percentage points, calculated from the underlying prediction counts. These results do not demonstrate an overall performance advantage for the GFNet-inspired model under the evaluated settings.
+
+The GFNet test accuracy of 71.51% did not meet the initial 80% acceptance target. This result is reported without substituting validation accuracy or results from earlier model versions.
+
+### 6.3 Per-Class Performance
+
+| Model | Class | Precision | Recall | F1-score | Support |
+|---|---|---:|---:|---:|---:|
+| CNN | NC | 0.7211 | 0.7947 | 0.7561 | 2,440 |
+| CNN | AD | 0.7139 | 0.6250 | 0.6665 | 2,000 |
+| GFNet | NC | 0.7116 | 0.8098 | 0.7575 | 2,440 |
+| GFNet | AD | 0.7210 | 0.5995 | 0.6547 | 2,000 |
+
+GFNet achieved higher NC recall and AD precision than the CNN, but lower AD recall. At the default argmax decision rule, GFNet correctly identified 59.95% of AD-labelled slices, compared with 62.50% for the CNN.
+
+These class-specific results reveal limitations that are less apparent from overall accuracy alone.
+
+### 6.4 Confusion Matrix Analysis
+
+With AD treated as the positive class, the test predictions were:
+
+| Outcome | CNN baseline | GFNet-inspired model |
+|---|---:|---:|
+| True negative: NC predicted as NC | 1,939 | 1,976 |
+| False positive: NC predicted as AD | 501 | 464 |
+| False negative: AD predicted as NC | 750 | 801 |
+| True positive: AD predicted as AD | 1,250 | 1,199 |
+
+Relative to the CNN, GFNet produced 37 fewer false positives but 51 more false negatives. It therefore favoured NC predictions more strongly at the evaluated decision rule.
+
+These counts describe MRI slices, not independent patient diagnoses. Multiple slices from the same patient may contribute to the same error pattern.
+
+### 6.5 Interpretation
+
+The larger GFNet-inspired model did not outperform the compact CNN baseline on the principal aggregate test metrics in this run. However, this comparison does not establish that CNNs are generally superior to global filter networks. The models used different augmentation and optimization settings, and the reported results are based on one training run per model.
+
+The small performance differences have not been assessed using repeated runs or patient-level uncertainty estimates. Furthermore, AUROC measures discrimination across decision thresholds; it does not establish that predicted probabilities are calibrated.
+
+The following analyses examine confidence, representative failure cases, and computational cost to assess whether either model offers a useful operational trade-off.
+
+## 7. Prediction Confidence and Failure Analysis
+
+### 7.1 Prediction Confidence Comparison
+
+Prediction confidence is defined as the maximum softmax probability across the NC and AD classes. Confidence statistics are calculated separately for correct and incorrect predictions on the same test set of 4,440 slices.
+
+| Model | Prediction outcome | Number of slices | Mean confidence | Median confidence |
+|---|---|---:|---:|---:|
+| CNN | Correct | 3,213 | 0.7710 | 0.7875 |
+| CNN | Incorrect | 1,227 | 0.6827 | 0.6548 |
+| GFNet | Correct | 3,175 | 0.7829 | 0.8074 |
+| GFNet | Incorrect | 1,265 | 0.7036 | 0.6821 |
+
+For both models, correct predictions had higher mean and median confidence than incorrect predictions. However, incorrect predictions still received substantial confidence. GFNet assigned higher average confidence to both correct and incorrect predictions than the CNN, despite achieving slightly lower test accuracy.
+
+To examine high-confidence errors, predictions with confidence of at least 0.90 were analysed.
+
+| Metric | CNN baseline | GFNet-inspired model |
+|---|---:|---:|
+| Predictions with confidence ≥ 0.90 | 857 | 982 |
+| Percentage of test slices | 19.30% | 22.12% |
+| Incorrect predictions in this subset | 100 | 160 |
+| Accuracy within this subset | 88.33% | 83.71% |
+
+Both models achieved higher accuracy within their high-confidence subsets than on the full test set. Nevertheless, neither subset reached 90% accuracy, despite every included prediction receiving a confidence score of at least 90%. This indicates overconfidence within the examined subsets.
+
+At this threshold, GFNet retained a larger proportion of test slices but produced a higher error rate among retained predictions. The CNN provided higher retained-set accuracy at lower coverage. Because the models retained different subsets of images, this comparison does not establish that the CNN is better calibrated overall.
+
+These findings show that a high softmax score alone is insufficient to establish prediction reliability. They describe slice-level predictions and should not be interpreted as patient-level diagnostic performance.
+
+The 0.90 threshold is used as a descriptive diagnostic, not as a validated operating threshold. A referral rule should be selected using validation data and subsequently evaluated on the test set.
+
+### 7.2 Representative Failure Cases
+
+Four misclassified test slices from different patients were selected to illustrate contrasting failure modes: a high-confidence false negative, a high-confidence false positive, and two errors close to the decision boundary. Selection prioritised different patients and ranked errors by prediction confidence within each error category. These deliberately selected examples do not represent the frequency of each failure mode across the dataset.
+
+![GFNet failure cases](dataset/report/gfnet_failure_cases.png)
+
+*Selected GFNet misclassifications from four different patients. Images are displayed after deterministic test preprocessing, with normalization reversed for visualization. Confidence refers to the probability assigned to the predicted class.*
+
+| Case | True label | Predicted label | Predicted-class confidence | Error type |
+|---|---|---|---:|---|
+| 1 | AD | NC | 97.42% | High-confidence false negative |
+| 2 | NC | AD | 93.10% | High-confidence false positive |
+| 3 | AD | NC | 50.10% | Lower-confidence false negative |
+| 4 | NC | AD | 50.07% | Lower-confidence false positive |
+
+**Case 1: High-confidence false negative.**  
+The model assigned an AD-labelled slice to NC with 97.42% confidence. This is an example of a confidently incorrect negative prediction. A rule referring only predictions below 90% confidence would not flag this case.
+
+**Case 2: High-confidence false positive.**  
+The model assigned an NC-labelled slice to AD with 93.10% confidence. This error would also pass a 90% confidence filter. Together, Cases 1 and 2 show that confidently incorrect predictions occur in both directions.
+
+**Case 3: Lower-confidence false negative.**  
+The model predicted NC with 50.10% confidence, assigning almost equal probabilities to the two classes. The displayed image also contains visible peripheral texture around the brain boundary. Whether this appearance contributed to the error cannot be established from visual inspection alone; it is a potential factor for further investigation.
+
+**Case 4: Lower-confidence false positive.**  
+The model predicted AD with 50.07% confidence. This prediction lies very close to the decision boundary and illustrates model uncertainty despite a definite class being returned by argmax. Near-equal probabilities indicate model uncertainty, not necessarily clinical ambiguity.
+
+The displayed slices vary in shape, contrast, and peripheral appearance. Such variation may affect classification, but these examples do not establish causal explanations for the errors or demonstrate specific disease-related anatomical changes. The model receives individual slices and does not integrate information across the complete scan.
+
+These cases support investigating a referral rule for uncertain predictions while also demonstrating its limitations. A confidence-based rule could flag Cases 3 and 4, but high-confidence errors such as Cases 1 and 2 would remain. Therefore, retained-set error rates and coverage must be measured before drawing conclusions about the usefulness of automated triage.
+
+### 7.3 Validation-Based Referral Rule
+
+An exploratory confidence-based referral rule was investigated using the validation set. Predictions with confidence below a threshold would be referred for human review, while predictions at or above the threshold would be retained.
+
+Candidate thresholds ranged from 0.50 to 0.99 in increments of 0.01. The selection criteria required retained-set accuracy of at least 90% and coverage of at least 10%. Among qualifying candidates, the threshold with the highest coverage would be selected. These criteria were experimental targets rather than clinical safety standards.
+
+| Confidence threshold | Retained validation slices | Coverage | Retained accuracy |
+|---|---:|---:|---:|
+| 0.90 | 964 | 21.61% | 86.62% |
+| 0.94 | 529 | 11.86% | 88.85% |
+| 0.95 | 414 | 9.28% | 92.03% |
+
+No candidate threshold satisfied both criteria. At a threshold of 0.94, coverage remained above 10%, but retained accuracy was below 90%. Increasing the threshold to 0.95 raised retained accuracy to 92.03%, while reducing coverage to 9.28%, which would refer 90.72% of validation slices for review.
+
+Consequently, no operating threshold was selected, and no corresponding test-set referral evaluation was performed. This finding illustrates the trade-off between retained accuracy and coverage: higher confidence thresholds can improve accuracy on retained predictions while leaving most inputs for human review.
+
+Under the specified criteria and candidate grid, the GFNet model did not support the proposed referral rule. This does not rule out other approaches, but it provides no evidence that the current confidence scores can deliver the targeted accuracy and coverage simultaneously. Threshold filtering also does not calibrate the predicted probabilities.
+
+#### CNN Baseline Comparison
+
+The same threshold grid and validation selection criteria were applied to the CNN baseline. Unlike GFNet, the CNN produced an eligible threshold. A confidence threshold of 0.78 achieved the highest validation coverage among candidates satisfying both criteria.
+
+| Metric | CNN baseline |
+|---|---:|
+| Selected confidence threshold | 0.78 |
+| Validation coverage | 45.96% |
+| Validation retained accuracy | 90.59% |
+| Test retained slices | 1,996 |
+| Test referred slices | 2,444 |
+| Test coverage | 44.95% |
+| Test referral rate | 55.05% |
+| Test retained accuracy | 83.17% |
+| Test retained errors | 336 |
+| Retained false negatives | 308 |
+| Retained false positives | 28 |
+| AD test coverage | 35.15% |
+| NC test coverage | 52.99% |
+
+The threshold was selected using validation data and then applied unchanged to the test set. Although test coverage was similar to validation coverage, retained accuracy decreased from 90.59% to 83.17%. Therefore, meeting the validation selection criteria did not guarantee that the accuracy target would generalise to the test set.
+
+The rule increased accuracy from 72.36% on the full test set to 83.17% among retained predictions, while referring 55.05% of slices for review. However, 336 errors remained among retained predictions, including 308 AD-labelled slices incorrectly classified as NC.
+
+Coverage also differed between classes: 35.15% of AD slices were retained, compared with 52.99% of NC slices. The retained subset therefore had a different class composition from the full test set, which must be considered when interpreting its accuracy.
+
+Overall, GFNet did not satisfy the validation criteria, while the CNN satisfied them on validation data but failed to maintain the 90% retained-accuracy target on test data. Neither experiment establishes a reliable autonomous triage rule under the specified targets. Referred predictions are not assumed to become correct, and the results remain slice-level rather than patient-level evaluations.
