@@ -590,7 +590,22 @@ These versions describe the environment used for script verification. Exact nume
 | `train.py` | Trains a selected model, evaluates validation performance, and saves the best checkpoint and training history |
 | `predict.py` | Loads a saved checkpoint and generates test metrics, prediction records, a confusion matrix, and a ROC curve |
 
-The four Python files must be placed in the same directory. The notebooks retain the original exploratory workflow and the additional confidence, referral, failure-case, and resource analyses.
+The project was initially developed in Jupyter notebooks on Google
+Colab to support interactive debugging, data inspection, and experimental
+analysis. The core model definitions, data-loading functions, training
+loop, and checkpoint evaluation were subsequently organised into four
+modular Python scripts.
+
+The notebooks retain the complete experimental workflow. In particular,
+`01_data_exploration.ipynb` and `02_preprocessing.ipynb` prepare the image
+inventory and patient-independent split CSVs required by the standalone
+scripts. The CNN and GFNet notebooks contain the confidence, referral, and
+resource-profiling analyses. The GFNet notebook additionally contains
+the representative failure-case analysis.
+
+The standalone scripts support training and checkpoint evaluation once
+the data and split CSVs have been prepared. They do not independently
+reproduce every analysis presented in this report.
 
 ### 10.3 Data Preparation
 
@@ -617,6 +632,23 @@ The scripts check patient independence and image-path overlap. Before loading te
 Datasets and model weights are not included in the Git repository. Users must obtain the course dataset and either provide compatible checkpoints or train the models.
 
 ### 10.4 Verified Checkpoint Evaluation
+
+Before running the commands below:
+
+1. Run `01_data_exploration.ipynb` to generate the image inventory.
+2. Run `02_preprocessing.ipynb` to generate the patient-independent
+   training, validation, and test CSVs.
+3. Extract the image archives into `/content/mri_cache`, following
+   the extraction cell in either model notebook.
+4. Place the four Python scripts in the same directory. For checkpoint
+   evaluation, provide compatible saved model weights.
+
+Update all paths to match your environment. Training from scratch
+does not require an existing checkpoint.
+
+Skip steps 1–2 if the image inventory and final split CSVs have
+already been prepared. Restore the image cache whenever a new
+Colab runtime is started.
 
 The commands below were verified in Colab after mounting Google Drive and extracting the images. They use the project paths from the experiments; other users should substitute their own paths.
 
