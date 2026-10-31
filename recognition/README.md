@@ -454,3 +454,96 @@ The rule increased accuracy from 72.36% on the full test set to 83.17% among ret
 Coverage also differed between classes: 35.15% of AD slices were retained, compared with 52.99% of NC slices. The retained subset therefore had a different class composition from the full test set, which must be considered when interpreting its accuracy.
 
 Overall, GFNet did not satisfy the validation criteria, while the CNN satisfied them on validation data but failed to maintain the 90% retained-accuracy target on test data. Neither experiment establishes a reliable autonomous triage rule under the specified targets. Referred predictions are not assumed to become correct, and the results remain slice-level rather than patient-level evaluations.
+
+## 8. Computational Cost
+
+### 8.1 Benchmark Protocol
+
+Both models were benchmarked on an NVIDIA A100-SXM4 GPU with 40 GB of memory using PyTorch 2.11.0+cu130 and CUDA 13.0.
+
+The benchmark used a GPU-resident input tensor of shape 1 × 1 × 256 × 256. Models were placed in evaluation mode, and gradient computation was disabled using `torch.inference_mode()`. Thirty warm-up passes were followed by 200 timed forward passes using CUDA events.
+
+Inputs and model weights used FP32 tensors. cuDNN TF32 was enabled, matrix-multiplication TF32 was disabled, and cuDNN benchmarking was disabled.
+
+Reported latency measures GPU model forward execution only. It excludes image loading, preprocessing, CPU-to-GPU transfer, and subsequent prediction analysis. Memory was measured separately during a warmed-up forward pass.
+
+### 8.2 Resource Comparison
+
+| Metric | CNN baseline | GFNet-inspired model |
+|---|---:|---:|
+| Parameters | 92,930 | 1,418,882 |
+| Batch size | 1 | 1 |
+| Mean forward latency (ms) | 0.507 | 3.831 |
+| Median forward latency (ms) | 0.498 | 3.721 |
+| P95 forward latency (ms) | 0.577 | 4.303 |
+| Baseline allocated GPU memory (MiB) | 24.569 | 39.741 |
+| Peak allocated GPU memory (MiB) | 40.569 | 41.241 |
+| Incremental peak GPU memory (MiB) | 16.000 | 1.500 |
+
+GFNet contained approximately 15.3 times as many parameters and had approximately 7.6 times the mean forward latency of the CNN under this benchmark.
+
+However, GFNet required less incremental GPU memory during the measured forward pass. This is consistent with its early reduction of the input to a 16 × 16 patch-feature grid, whereas the CNN initially computes feature maps at 256 × 256 resolution. Parameter count alone therefore does not determine activation memory requirements or execution speed.
+
+### 8.3 Measurement Limitations
+
+Peak allocated memory refers to PyTorch tensor allocations in the current notebook process. It may include persistent tensors and optimizer state remaining from earlier operations. It is not an isolated model-memory measurement or the total GPU memory reported by system monitoring tools.
+
+Incremental peak memory is the increase above the allocated-memory baseline during the measured forward pass. It measures additional allocation during warmed-up inference and does not include all memory required to store or initialise the model.
+
+These measurements describe batch-size-one inference, not training memory, training speed, or throughput at larger batch sizes. The latency percentiles summarise repeated passes within one benchmark session rather than variation across independent sessions.
+
+### 8.4 Performance–Cost Trade-off
+
+The CNN achieved slightly higher test accuracy, macro-F1, and AUROC while using fewer parameters and lower forward latency. GFNet offered lower incremental forward-pass memory, but this did not translate into a predictive advantage in the evaluated experiment.
+
+For the tested single-slice inference setting, the results favour the CNN as the more economical reference model. This conclusion is limited to the evaluated implementations and does not establish clinical suitability. Both models retained important classification and confidence-related limitations.
+
+## 9. Discussion and Engineering Recommendation
+
+### 9.1 Main Findings
+
+This project implemented a GFNet-inspired classifier and a compact CNN baseline for AD versus NC classification using patient-independent ADNI data partitions.
+
+The CNN achieved 72.36% test accuracy, a macro-F1 of 0.7141, and an AUROC of 0.7939. GFNet achieved 71.51% accuracy, a macro-F1 of 0.7061, and an AUROC of 0.7789. The GFNet model therefore did not meet the initial 80% test accuracy target or demonstrate an overall predictive advantage over the baseline.
+
+The accuracy difference was approximately 0.86 percentage points. This is a descriptive result from one run per configuration, rather than evidence of statistically significant superiority. Differences in augmentation, optimization, and training budgets also prevent attributing the outcome exclusively to architecture.
+
+GFNet showed evidence of overfitting: training performance continued to improve after the best validation checkpoint, while validation loss increased. Its larger capacity did not translate into better performance on the evaluated test set.
+
+### 9.2 Confidence and Ambiguity Dilemma
+
+Both models assigned higher average confidence to correct predictions than to incorrect predictions. Nevertheless, both also produced high-confidence errors. Among predictions with confidence of at least 0.90, test accuracy was 88.33% for the CNN and 83.71% for GFNet.
+
+These findings demonstrate that softmax confidence alone was insufficient to establish prediction reliability. The selected failure cases included an AD slice incorrectly classified as NC with 97.42% confidence and an NC slice incorrectly classified as AD with 93.10% confidence. A rule referring only low-confidence predictions would leave these errors unflagged.
+
+The validation-based referral experiment further exposed this limitation. GFNet had no candidate threshold satisfying both 90% retained accuracy and 10% coverage. The CNN satisfied these criteria on validation data at a threshold of 0.78, but retained accuracy fell to 83.17% on the test set.
+
+Although the CNN rule referred 55.05% of test slices for review, it still retained 308 false negatives and 28 false positives. Therefore, neither model demonstrated the targeted combination of predictive reliability and coverage on unseen test patients.
+
+### 9.3 Limitations
+
+Several limitations affect the interpretation of these experiments:
+
+- **Slice-level evaluation:** Patients were separated across partitions, but predictions and metrics were calculated per slice. Correlated slices from one patient do not constitute independent diagnostic cases, and patients contributing more slices have greater influence on aggregate metrics.
+- **Exploratory test feedback:** Test results were inspected during development and informed some experimental choices. The reported results are therefore not a completely untouched confirmatory evaluation.
+- **Unmatched training configurations:** The CNN and GFNet used different augmentation pipelines, optimizers, learning-rate schedules, and training budgets. The comparison evaluates complete implementations rather than isolating architectural effects.
+- **Single-run evidence:** Multiple training seeds and patient-level confidence intervals were not evaluated. Small differences between models may reflect experimental variability.
+- **Limited confidence assessment:** Confidence summaries and threshold filtering were evaluated, but probability calibration was not fitted or systematically measured.
+- **Qualitative interpretation:** Failure cases were deliberately selected to illustrate contrasting errors. Visual observations do not establish the causal reasons for model failure or specific disease-related anatomical changes.
+- **Restricted resource benchmark:** Computational measurements describe warmed-up, batch-size-one GPU forward inference. They do not measure end-to-end application latency or peak training memory.
+
+### 9.4 Recommendation to the Project Manager
+
+The current prototype should remain a research and evaluation tool rather than be advanced as an autonomous diagnostic or triage system. Neither model established sufficiently reliable predictions under the proposed referral criteria, and confidently incorrect AD-to-NC predictions remained.
+
+For further development under the tested conditions, the CNN is the more economical reference model. It achieved slightly better aggregate test performance with 92,930 parameters and a mean forward latency of 0.507 ms, compared with 1,418,882 parameters and 3.831 ms for GFNet. GFNet's lower incremental inference memory is useful to document, but it does not offset the absence of a predictive advantage in this experiment.
+
+Further work should prioritise the following:
+
+1. Freeze the evaluation protocol and reserve a fresh patient-level holdout for confirmatory testing.
+2. Conduct controlled comparisons using matched augmentation and comparable tuning budgets, with multiple random seeds.
+3. Investigate scan-level or patient-level aggregation and evaluate uncertainty using patient-level resampling.
+4. Assess probability calibration and referral rules using development data, then evaluate the fixed procedures on held-out data.
+5. Measure end-to-end inference cost and investigate whether global filtering provides benefits under these revised conditions.
+
+The evidence supports retaining the CNN baseline while investigating the limitations of both models. Additional architectural complexity should be justified by reproducible improvements in predictive performance, confidence reliability, or operational efficiency.
