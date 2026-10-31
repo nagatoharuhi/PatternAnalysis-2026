@@ -292,6 +292,14 @@ The CNN completed 10 training epochs, while GFNet completed 30. Checkpoints were
 
 Both models continued to improve on the training set after their best validation checkpoints, without corresponding improvements in validation loss. For GFNet, training loss decreased from 0.4962 at epoch 15 to 0.3830 at epoch 30, while validation loss increased from 0.5618 to 0.6554. This pattern is consistent with overfitting and supports evaluating the selected checkpoint rather than the final-epoch weights.
 
+![CNN training curves](dataset/report/cnn_training_curves.png)
+
+*Figure 2. CNN training and validation curves over 10 epochs. The best checkpoint was selected at epoch 9.*
+
+![GFNet training curves](dataset/report/gfnet_training_curves.png)
+
+*Figure 3. GFNet training and validation curves over 30 epochs. The best checkpoint was selected at epoch 15.*
+
 ### 6.2 Test Performance
 
 Both selected checkpoints were evaluated on the same 4,440 test slices from 102 patients.
@@ -309,6 +317,14 @@ Both selected checkpoints were evaluated on the same 4,440 test slices from 102 
 The CNN achieved slightly higher accuracy, balanced accuracy, macro-F1, and AUROC in this experiment. Its accuracy exceeded GFNet by approximately 0.86 percentage points, calculated from the underlying prediction counts. These results do not demonstrate an overall performance advantage for the GFNet-inspired model under the evaluated settings.
 
 The GFNet test accuracy of 71.51% did not meet the initial 80% acceptance target. This result is reported without substituting validation accuracy or results from earlier model versions.
+
+![CNN ROC curve](dataset/report/cnn_roc_curve.png)
+
+*Figure 4. CNN test ROC curve, with AD as the positive class. AUROC = 0.7939.*
+
+![GFNet ROC curve](dataset/report/gfnet_roc_curve.png)
+
+*Figure 5. GFNet test ROC curve, with AD as the positive class. AUROC = 0.7789.*
 
 ### 6.3 Per-Class Performance
 
@@ -337,6 +353,14 @@ With AD treated as the positive class, the test predictions were:
 Relative to the CNN, GFNet produced 36 more false positives and 2 more false negatives. The difference in total correct predictions was therefore mainly associated with NC classification.
 
 These counts describe MRI slices, not independent patient diagnoses. Multiple slices from the same patient may contribute to the same error pattern.
+
+![CNN confusion matrix](dataset/report/cnn_confusion_matrix.png)
+
+*Figure 6. CNN test confusion matrix. Rows represent true labels and columns represent predicted labels.*
+
+![GFNet confusion matrix](dataset/report/gfnet_confusion_matrix.png)
+
+*Figure 7. GFNet test confusion matrix. Rows represent true labels and columns represent predicted labels.*
 
 ### 6.5 Interpretation
 
@@ -384,7 +408,7 @@ Four misclassified test slices from different patients were selected to illustra
 
 ![GFNet failure cases](dataset/report/gfnet_failure_cases.png)
 
-*Selected GFNet misclassifications from four different patients. Images are displayed after deterministic test preprocessing, with normalization reversed for visualization. Confidence refers to the probability assigned to the predicted class.*
+*Figure 8. Selected GFNet misclassifications from four different patients. Images are displayed after deterministic test preprocessing, with normalization reversed for visualization. Confidence refers to the probability assigned to the predicted class.*
 
 | Case | True label | Predicted label | Predicted-class confidence | Error type |
 |---|---|---|---:|---|
