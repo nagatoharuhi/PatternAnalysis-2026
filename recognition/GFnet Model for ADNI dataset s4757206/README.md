@@ -321,7 +321,6 @@ The CNN achieved slightly higher accuracy, balanced accuracy, macro-F1, and AURO
 
 The GFNet test accuracy of 71.51% did not meet the initial 80% acceptance target. This result is reported without substituting validation accuracy or results from earlier model versions.
 
-<!-- ![CNN ROC curve](dataset/report/cnn_roc_curve.png) -->
 <p align="center">
   <img src="dataset/report/cnn_roc_curve.png"
        alt="CNN ROC curve" width="500">
@@ -329,7 +328,10 @@ The GFNet test accuracy of 71.51% did not meet the initial 80% acceptance target
 
 *Figure 5. CNN test ROC curve, with AD as the positive class. AUROC = 0.7939.*
 
-![GFNet ROC curve](dataset/report/gfnet_roc_curve.png)
+<p align="center">
+  <img src="dataset/report/gfnet_roc_curve.png"
+       alt="GFNet ROC curve" width="500">
+</p>
 
 *Figure 6. GFNet test ROC curve, with AD as the positive class. AUROC = 0.7789.*
 
@@ -361,11 +363,17 @@ Relative to the CNN, GFNet produced 36 more false positives and 2 more false neg
 
 These counts describe MRI slices, not independent patient diagnoses. Multiple slices from the same patient may contribute to the same error pattern.
 
-![CNN confusion matrix](dataset/report/cnn_confusion_matrix.png)
+<p align="center">
+  <img src="dataset/report/cnn_confusion_matrix.png"
+       alt="CNN confusion matrix" width="500">
+</p>
 
 *Figure 7. CNN test confusion matrix. Rows represent true labels and columns represent predicted labels.*
 
-![GFNet confusion matrix](dataset/report/gfnet_confusion_matrix.png)
+<p align="center">
+  <img src="dataset/report/gfnet_confusion_matrix.png"
+       alt="GFNet confusion matrix" width="500">
+</p>
 
 *Figure 8. GFNet test confusion matrix. Rows represent true labels and columns represent predicted labels.*
 
