@@ -132,6 +132,12 @@ The baseline contains **92,930 trainable parameters**. Its compact architecture 
 
 ### 4.2 GFNet-Inspired Architecture
 
+![Original GFNet architecture](dataset/report/gfnet_architecture.gif)
+
+*Figure 2. Original GFNet conceptual illustration. Source: Rao et al. [1, 2].
+Our implementation uses separate residual connections around the global
+filter and MLP branches, as described in Section 4.4.*
+
 The advanced model follows the global filtering concept introduced by Rao et al. [1], with implementation reference to the authors’ code repository [2]. The present implementation uses separate residual connections around the global filtering and MLP branches.
 
 Each 256 × 256 input image is divided into non-overlapping 16 × 16 patches using a convolution with kernel size 16 and stride 16. Each patch is projected into a 128-dimensional feature vector, producing a 16 × 16 feature grid containing 256 patch representations.
@@ -291,11 +297,11 @@ Both models continued to improve on the training set after their best validation
 
 ![CNN training curves](dataset/report/cnn_training_curves.png)
 
-*Figure 2. CNN training and validation curves over 10 epochs. The best checkpoint was selected at epoch 9.*
+*Figure 3. CNN training and validation curves over 10 epochs. The best checkpoint was selected at epoch 9.*
 
 ![GFNet training curves](dataset/report/gfnet_training_curves.png)
 
-*Figure 3. GFNet training and validation curves over 30 epochs. The best checkpoint was selected at epoch 15.*
+*Figure 4. GFNet training and validation curves over 30 epochs. The best checkpoint was selected at epoch 15.*
 
 ### 6.2 Test Performance
 
@@ -317,11 +323,11 @@ The GFNet test accuracy of 71.51% did not meet the initial 80% acceptance target
 
 ![CNN ROC curve](dataset/report/cnn_roc_curve.png)
 
-*Figure 4. CNN test ROC curve, with AD as the positive class. AUROC = 0.7939.*
+*Figure 5. CNN test ROC curve, with AD as the positive class. AUROC = 0.7939.*
 
 ![GFNet ROC curve](dataset/report/gfnet_roc_curve.png)
 
-*Figure 5. GFNet test ROC curve, with AD as the positive class. AUROC = 0.7789.*
+*Figure 6. GFNet test ROC curve, with AD as the positive class. AUROC = 0.7789.*
 
 ### 6.3 Per-Class Performance
 
@@ -353,11 +359,11 @@ These counts describe MRI slices, not independent patient diagnoses. Multiple sl
 
 ![CNN confusion matrix](dataset/report/cnn_confusion_matrix.png)
 
-*Figure 6. CNN test confusion matrix. Rows represent true labels and columns represent predicted labels.*
+*Figure 7. CNN test confusion matrix. Rows represent true labels and columns represent predicted labels.*
 
 ![GFNet confusion matrix](dataset/report/gfnet_confusion_matrix.png)
 
-*Figure 7. GFNet test confusion matrix. Rows represent true labels and columns represent predicted labels.*
+*Figure 8. GFNet test confusion matrix. Rows represent true labels and columns represent predicted labels.*
 
 ### 6.5 Interpretation
 
@@ -405,7 +411,7 @@ Four misclassified test slices from different patients were selected to illustra
 
 ![GFNet failure cases](dataset/report/gfnet_failure_cases.png)
 
-*Figure 8. Selected GFNet misclassifications from four different patients. Images are displayed after deterministic test preprocessing, with normalization reversed for visualization. Confidence refers to the probability assigned to the predicted class.*
+*Figure 9. Selected GFNet misclassifications from four different patients. Images are displayed after deterministic test preprocessing, with normalization reversed for visualization. Confidence refers to the probability assigned to the predicted class.*
 
 | Case | True label | Predicted label | Predicted-class confidence | Error type |
 |---|---|---|---:|---|
