@@ -628,6 +628,69 @@ The standalone scripts support training and checkpoint evaluation once
 the data and split CSVs have been prepared. They do not independently
 reproduce every analysis presented in this report.
 
+#### Project Directory Structure
+
+```text
+
+.
+├── README.md
+├── README.pdf
+├── Checkoff.md
+├── Google_Drive_Screenshot.png
+├── dataset.py
+├── modules.py
+├── train.py
+├── predict.py
+├── dataset/
+│   ├── processed/
+│   │   └── image_records.csv
+│   ├── raw/
+│   │   └── Raw_Data_Required.txt
+│   ├── splits/
+│   │   ├── train.csv
+│   │   ├── val.csv
+│   │   └── test.csv
+│   └── report/
+│       ├── adni_examples.png
+│       ├── gfnet_architecture.gif
+│       ├── cnn_training_curves.png
+│       ├── gfnet_training_curves.png
+│       ├── cnn_roc_curve.png
+│       ├── gfnet_roc_curve.png
+│       ├── cnn_confusion_matrix.png
+│       ├── gfnet_confusion_matrix.png
+│       └── gfnet_failure_cases.png
+├── notebooks/
+│   ├── 01_data_exploration.ipynb
+│   ├── 02_preprocessing.ipynb
+│   ├── 03_cnn_baseline.ipynb
+│   └── 04_gfnet_71_final.ipynb
+├── results/
+│   ├── cnn_script_check/
+│   │   ├── classification_report.csv
+│   │   ├── metrics.json
+│   │   └── test_predictions.csv
+│   └── gfnet_script_check/
+│       ├── classification_report.csv
+│       ├── metrics.json
+│       └── test_predictions.csv
+└── script_full/
+    ├── adni_standalone_scripts.zip
+    └── adni_scripts/
+        ├── USAGE.md
+        ├── dataset.py
+        ├── modules.py
+        ├── train.py
+        └── predict.py
+```
+
+The directory tree shows the main submission files and report figures.
+The four Python scripts in the project root are the entry points used
+by the commands in Sections 10.4–10.5. The `notebooks/` directory contains
+the experimental notebooks, while `results/` contains saved experimental
+outputs. The `script_full/` directory contains an additional extended
+script version and is not used by those commands.
+
 ### 10.3 Data Preparation
 
 The data exploration notebook constructs an image inventory containing image paths, image IDs, patient IDs, and class labels. The preprocessing notebook removes the identified duplicate record and creates the final patient-independent split CSVs:
