@@ -521,53 +521,44 @@ For the tested single-slice inference setting, the results favour the CNN as the
 
 ## 9. Discussion and Engineering Recommendation
 
-### 9.1 Main Findings
+### 9.1 Exploratory Experiments
 
-This project implemented a GFNet-inspired classifier and a compact CNN baseline for AD versus NC classification using patient-independent ADNI data partitions.
+Several exploratory experiments investigated data partitioning, augmentation, model capacity, and residual connections before the final configuration was selected.
 
-The CNN achieved 72.36% test accuracy, a macro-F1 of 0.7141, and an AUROC of 0.7939. GFNet achieved 71.51% accuracy, a macro-F1 of 0.7061, and an AUROC of 0.7789. The GFNet model therefore did not meet the initial 80% test accuracy target or demonstrate an overall predictive advantage over the baseline.
+Patient-level partitioning strategies included allocating patients shared by the original folders between training and testing, assigning all shared patients to the training candidate set, and repartitioning patients to preserve similar AD/NC patient proportions. Image-level alternatives were also explored, but these could place slices from the same patient in multiple partitions. The final experiment therefore used the patient-independent, class-stratified 70/15/15 split described in Section 3.
 
-The accuracy difference was approximately 0.86 percentage points. This is a descriptive result from one run per configuration, rather than evidence of statistically significant superiority. Differences in augmentation, optimization, and training budgets also prevent attributing the outcome exclusively to architecture.
+For GFNet, augmentation trials included translation, scaling, random erasing, and elastic deformation. The final configuration retained horizontal flipping and rotation. Stronger transformations may obscure useful slice-level information, but their individual effects were not isolated experimentally.
 
-GFNet showed evidence of overfitting: training performance continued to improve after the best validation checkpoint, while validation loss increased. Its larger capacity did not translate into better performance on the evaluated test set.
+Model configurations explored embedding dimensions of 384, 256, 192, and 128, and depths of 12, 8, and 6 blocks. Larger configurations did not provide a consistent improvement during exploration. Limited numbers of independent training patients may contribute to overfitting, although optimisation settings and training duration are also possible factors. The final model uses dimension 128 and depth 8.
 
-### 9.2 Confidence and Ambiguity Dilemma
+Both single and double residual designs were explored. The final implementation uses separate residual connections around the global filter and MLP branches to preserve identity paths and facilitate gradient propagation. Residual connections are not themselves a method for preventing overfitting.
 
-Both models assigned higher average confidence to correct predictions than to incorrect predictions. Nevertheless, both also produced high-confidence errors. Among predictions with confidence of at least 0.90, test accuracy was 88.33% for the CNN and 83.71% for GFNet.
+These trials informed the final configuration but were not a controlled ablation study. Multiple factors changed between experiments, and results from different data partitions are not directly comparable. No isolated performance improvement is attributed to an individual modification.
 
-These findings demonstrate that softmax confidence alone was insufficient to establish prediction reliability. The selected failure cases included an AD slice incorrectly classified as NC with 97.42% confidence and an NC slice incorrectly classified as AD with 93.10% confidence. A rule referring only low-confidence predictions would leave these errors unflagged.
+### 9.2 Main Findings and Limitations
 
-The validation-based referral experiment further exposed this limitation. GFNet had no candidate threshold satisfying both 90% retained accuracy and 10% coverage. The CNN satisfied these criteria on validation data at a threshold of 0.78, but retained accuracy fell to 83.17% on the test set.
+The CNN baseline achieved 72.36% test accuracy, compared with 71.51% for GFNet, and also obtained slightly higher macro-F1 and AUROC. GFNet did not meet the initial 80% accuracy target. Its training loss continued to decrease after the best validation checkpoint while validation loss increased, indicating overfitting.
 
-Although the CNN rule referred 55.05% of test slices for review, it still retained 308 false negatives and 28 false positives. Therefore, neither model demonstrated the targeted combination of predictive reliability and coverage on unseen test patients.
+Correct predictions generally received higher confidence than incorrect predictions, but high-confidence errors remained in both models. GFNet did not identify a validation threshold satisfying the specified accuracy and coverage criteria. The CNN selected a threshold of 0.78, but retained accuracy fell from 90.59% on validation data to 83.17% on test data. Thus, neither experiment established a referral rule that met the targeted reliability and coverage on the test set.
 
-### 9.3 Limitations
+Several limitations qualify these findings:
 
-Several limitations affect the interpretation of these experiments:
+- The models used identical evaluation splits but different augmentation, optimisation settings, and training budgets. Performance differences cannot be attributed solely to architecture.
+- Results were based on one run per configuration and evaluated per slice rather than per patient. Small differences were not tested for statistical significance.
+- Test results informed some exploratory development decisions, so the evaluation was not a completely untouched confirmatory test.
+- Confidence filtering was assessed, but formal probability calibration and out-of-distribution robustness were not evaluated.
 
-- **Slice-level evaluation:** Patients were separated across partitions, but predictions and metrics were calculated per slice. Correlated slices from one patient do not constitute independent diagnostic cases, and patients contributing more slices have greater influence on aggregate metrics.
-- **Exploratory test feedback:** Test results were inspected during development and informed some experimental choices. The reported results are therefore not a completely untouched confirmatory evaluation.
-- **Unmatched training configurations:** The CNN and GFNet used different augmentation pipelines, optimizers, learning-rate schedules, and training budgets. The comparison evaluates complete implementations rather than isolating architectural effects.
-- **Single-run evidence:** Multiple training seeds and patient-level confidence intervals were not evaluated. Small differences between models may reflect experimental variability.
-- **Limited confidence assessment:** Confidence summaries and threshold filtering were evaluated, but probability calibration was not fitted or systematically measured.
-- **Qualitative interpretation:** Failure cases were deliberately selected to illustrate contrasting errors. Visual observations do not establish the causal reasons for model failure or specific disease-related anatomical changes.
-- **Restricted resource benchmark:** Computational measurements describe warmed-up, batch-size-one GPU forward inference. They do not measure end-to-end application latency or peak training memory.
+Potential label errors were also reported during development, but were not independently verified. Checks confirmed agreement between CSV, folder, and metadata labels; this does not establish the correctness of the underlying diagnostic annotations if these sources share the same labels. No verified corrected label set was incorporated. Label quality is therefore a possible limitation, but cannot be identified as the cause of the failure to reach 80% accuracy.
 
-### 9.4 Recommendation to the Project Manager
+### 9.3 Answer to the Engineering Dilemma and Recommendation
 
-The current prototype should remain a research and evaluation tool rather than be advanced as an autonomous diagnostic or triage system. Neither model established sufficiently reliable predictions under the proposed referral criteria, and confidently incorrect AD-to-NC predictions remained.
+The current evidence does not show that GFNet provides more reliable uncertainty estimates or a practical advantage over the CNN baseline. Confidence scores were informative in aggregate, but did not reliably exclude incorrect predictions, including confidently incorrect AD-to-NC classifications.
 
-For further development under the tested conditions, the CNN is the more economical reference model. It achieved slightly better aggregate test performance with 92,930 parameters and a mean forward latency of 0.507 ms, compared with 1,418,882 parameters and 3.831 ms for GFNet. GFNet's lower incremental inference memory is useful to document, but it does not offset the absence of a predictive advantage in this experiment.
+For further prototype development, retain the CNN as the reference model. GFNet had approximately 15.3 times as many parameters and 7.6 times the mean forward latency, without improving the principal test metrics. Its lower incremental inference memory is a useful trade-off, but does not establish an overall advantage under the evaluated conditions.
 
-Further work should prioritise the following:
+Neither model should currently be recommended for autonomous diagnosis or automatic clearance of high-confidence predictions. Further work should first verify the reported label issues, compare models under controlled training conditions, and investigate patient-level aggregation and confidence calibration. Any revised referral rule should be selected using development data and evaluated on a fresh patient-level holdout.
 
-1. Freeze the evaluation protocol and reserve a fresh patient-level holdout for confirmatory testing.
-2. Conduct controlled comparisons using matched augmentation and comparable tuning budgets, with multiple random seeds.
-3. Investigate scan-level or patient-level aggregation and evaluate uncertainty using patient-level resampling.
-4. Assess probability calibration and referral rules using development data, then evaluate the fixed procedures on held-out data.
-5. Measure end-to-end inference cost and investigate whether global filtering provides benefits under these revised conditions.
-
-The evidence supports retaining the CNN baseline while investigating the limitations of both models. Additional architectural complexity should be justified by reproducible improvements in predictive performance, confidence reliability, or operational efficiency.
+Additional model complexity should be justified by reproducible improvements in predictive performance, reliability, or computational efficiency. That justification was not established for the GFNet implementation in this experiment.
 
 ## 10. Reproducibility and Usage
 
