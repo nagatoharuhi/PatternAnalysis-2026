@@ -19,7 +19,7 @@ This project aims to develop a deep learning prototype to assist medical reviewe
 
 **Acceptance criteria:**
 
-- Achieve at least 80% test accuracy for AD versus CN classification.
+- Achieve at least 80% test accuracy for AD versus CN classification, following the course specification [4].
 - Compare GFNet against a CNN baseline using accuracy, per-class precision, recall, macro-F1, and AUROC.
 - Prevent patient-level data leakage across training, validation, and test sets.
 - Evaluate prediction confidence and investigate 3–5 representative failure cases.
@@ -57,7 +57,7 @@ This demonstrates a significant patient-level leakage risk in the supplied split
 
 ### 3.1 Dataset Overview and Data Audit
 
-This project uses the preprocessed ADNI dataset provided for the course, containing two-dimensional grayscale MRI slices labelled as Alzheimer’s disease (AD) or normal control (NC). The initial inventory contained 30,521 image records from 680 unique patients. Patient identifiers were extracted from the metadata and associated with individual image records using their image IDs. All image records were successfully mapped to patients, and no conflicting class labels were found within patients.
+This project uses the course-provided preprocessed version of the ADNI dataset [3, 4], containing two-dimensional grayscale MRI slices labelled as Alzheimer’s disease (AD) or normal control (NC). The initial inventory contained 30,521 image records from 680 unique patients. Patient identifiers were extracted from the metadata and associated with individual image records using their image IDs. All image records were successfully mapped to patients, and no conflicting class labels were found within patients.
 
 An audit of the original training and test folders identified 216 patients appearing in both partitions. Therefore, the original folder assignments were not used as the final experimental splits. One previously identified duplicate record, `976382_96 (1).jpeg`, was removed, leaving 30,520 images for subsequent experiments.
 
@@ -132,7 +132,7 @@ The baseline contains **92,930 trainable parameters**. Its compact architecture 
 
 ### 4.2 GFNet-Inspired Architecture
 
-The advanced model uses learnable frequency-domain filters to mix information across a spatial grid of patch features. The implementation follows the global filtering concept of GFNet and uses separate residual connections around the filtering and MLP branches.
+The advanced model follows the global filtering concept introduced by Rao et al. [1], with implementation reference to the authors’ code repository [2]. The present implementation uses separate residual connections around the global filtering and MLP branches.
 
 Each 256 × 256 input image is divided into non-overlapping 16 × 16 patches using a convolution with kernel size 16 and stride 16. Each patch is projected into a 128-dimensional feature vector, producing a 16 × 16 feature grid containing 256 patch representations.
 
@@ -207,7 +207,7 @@ Experiments are conducted in Google Colab using an NVIDIA A100-SXM4 GPU with 40 
 |---|---|---|
 | Input size | 1 × 256 × 256 | 1 × 256 × 256 |
 | Batch size | 32 | 32 |
-| Training epochs | 30 | 30 |
+| Training epochs | 10 | 30 |
 | Loss function | CrossEntropyLoss | CrossEntropyLoss |
 | Optimizer | Adam | AdamW |
 | Initial learning rate | 0.001 | 0.0003 |
@@ -215,7 +215,7 @@ Experiments are conducted in Google Colab using an NVIDIA A100-SXM4 GPU with 40 
 | Learning-rate scheduler | None | CosineAnnealingLR |
 | Scheduler T_max | Not applicable | 30 epochs |
 | Minimum learning rate | Not applicable | 0.000001 |
-| DataLoader workers | 2 | 8 |
+| DataLoader workers | 8 | 8 |
 | Pinned memory | Enabled | Enabled |
 | Checkpoint selection | Lowest validation loss | Lowest validation loss |
 
@@ -250,7 +250,7 @@ After each training epoch, the model is evaluated on the validation set using ev
 
 The best checkpoint is therefore defined by the lowest validation loss, rather than the highest training accuracy or the final training epoch. Before final evaluation, the saved checkpoint is reloaded and the model is placed in evaluation mode.
 
-Although early stopping was considered in the initial feasibility review, the implemented training procedure uses a fixed budget of 30 epochs and retains the checkpoint with the lowest validation loss.
+Although early stopping was considered in the initial feasibility review, the implemented training procedure uses fixed budgets of 10 epochs for the CNN and 30 epochs for GFNet. Each model retains the checkpoint with the lowest validation loss.
 
 ### 5.4 Reproducibility
 
@@ -279,16 +279,16 @@ The final partitions are patient-independent. However, test results were inspect
 
 ### 6.1 Training and Model Selection
 
-Both models completed 30 training epochs. Checkpoints were selected using the lowest validation loss and reloaded before test evaluation.
+The CNN completed 10 training epochs, while GFNet completed 30. Checkpoints were selected using the lowest validation loss and reloaded before test evaluation.
 
 | Metric | CNN baseline | GFNet-inspired model |
 |---|---:|---:|
-| Completed epochs | 30 | 30 |
+| Completed epochs | 10 | 30 |
 | Best epoch | 9 | 15 |
-| Best validation loss | 0.4664 | 0.5618 |
-| Validation accuracy at selected checkpoint | 78.41% | 72.71% |
-| Final-epoch training accuracy | 80.19% | 82.80% |
-| Final-epoch validation accuracy | 70.27% | 70.58% |
+| Best validation loss | 0.4618 | 0.5618 |
+| Validation accuracy at selected checkpoint | 78.99% | 72.71% |
+| Final-epoch training accuracy | 72.59% | 82.80% |
+| Final-epoch validation accuracy | 76.59% | 70.58% |
 
 Both models continued to improve on the training set after their best validation checkpoints, without corresponding improvements in validation loss. For GFNet, training loss decreased from 0.4962 at epoch 15 to 0.3830 at epoch 30, while validation loss increased from 0.5618 to 0.6554. This pattern is consistent with overfitting and supports evaluating the selected checkpoint rather than the final-epoch weights.
 
@@ -298,15 +298,15 @@ Both selected checkpoints were evaluated on the same 4,440 test slices from 102 
 
 | Metric | CNN baseline | GFNet-inspired model |
 |---|---:|---:|
-| Test loss | 0.5577 | 0.5801 |
-| Accuracy | 71.82% | 71.51% |
-| Balanced accuracy | 70.98% | 70.47% |
-| Macro precision | 0.7175 | 0.7163 |
-| Macro recall | 0.7098 | 0.7047 |
-| Macro F1 | 0.7113 | 0.7061 |
-| AUROC | 0.7869 | 0.7789 |
+| Test loss | 0.5559 | 0.5801 |
+| Accuracy | 72.36% | 71.51% |
+| Balanced accuracy | 71.25% | 70.47% |
+| Macro precision | 0.7265 | 0.7163 |
+| Macro recall | 0.7125 | 0.7047 |
+| Macro F1 | 0.7141 | 0.7061 |
+| AUROC | 0.7939 | 0.7789 |
 
-The CNN achieved slightly higher accuracy, balanced accuracy, macro-F1, and AUROC in this experiment. Its accuracy exceeded GFNet by approximately 0.32 percentage points, calculated from the underlying prediction counts. These results do not demonstrate an overall performance advantage for the GFNet-inspired model under the evaluated settings.
+The CNN achieved slightly higher accuracy, balanced accuracy, macro-F1, and AUROC in this experiment. Its accuracy exceeded GFNet by approximately 0.86 percentage points, calculated from the underlying prediction counts. These results do not demonstrate an overall performance advantage for the GFNet-inspired model under the evaluated settings.
 
 The GFNet test accuracy of 71.51% did not meet the initial 80% acceptance target. This result is reported without substituting validation accuracy or results from earlier model versions.
 
@@ -314,12 +314,12 @@ The GFNet test accuracy of 71.51% did not meet the initial 80% acceptance target
 
 | Model | Class | Precision | Recall | F1-score | Support |
 |---|---|---:|---:|---:|---:|
-| CNN | NC | 0.7211 | 0.7947 | 0.7561 | 2,440 |
-| CNN | AD | 0.7139 | 0.6250 | 0.6665 | 2,000 |
+| CNN | NC | 0.7158 | 0.8246 | 0.7663 | 2,440 |
+| CNN | AD | 0.7373 | 0.6005 | 0.6619 | 2,000 |
 | GFNet | NC | 0.7116 | 0.8098 | 0.7575 | 2,440 |
 | GFNet | AD | 0.7210 | 0.5995 | 0.6547 | 2,000 |
 
-GFNet achieved higher NC recall and AD precision than the CNN, but lower AD recall. At the default argmax decision rule, GFNet correctly identified 59.95% of AD-labelled slices, compared with 62.50% for the CNN.
+The CNN achieved higher precision, recall, and F1-score for both classes in this run. AD recall was similar between models: 60.05% for CNN and 59.95% for GFNet. The difference in NC recall was larger, at 82.46% for CNN and 80.98% for GFNet.
 
 These class-specific results reveal limitations that are less apparent from overall accuracy alone.
 
@@ -329,12 +329,12 @@ With AD treated as the positive class, the test predictions were:
 
 | Outcome | CNN baseline | GFNet-inspired model |
 |---|---:|---:|
-| True negative: NC predicted as NC | 1,939 | 1,976 |
-| False positive: NC predicted as AD | 501 | 464 |
-| False negative: AD predicted as NC | 750 | 801 |
-| True positive: AD predicted as AD | 1,250 | 1,199 |
+| True negative: NC predicted as NC | 2,012 | 1,976 |
+| False positive: NC predicted as AD | 428 | 464 |
+| False negative: AD predicted as NC | 799 | 801 |
+| True positive: AD predicted as AD | 1,201 | 1,199 |
 
-Relative to the CNN, GFNet produced 37 fewer false positives but 51 more false negatives. It therefore favoured NC predictions more strongly at the evaluated decision rule.
+Relative to the CNN, GFNet produced 36 more false positives and 2 more false negatives. The difference in total correct predictions was therefore mainly associated with NC classification.
 
 These counts describe MRI slices, not independent patient diagnoses. Multiple slices from the same patient may contribute to the same error pattern.
 
@@ -411,7 +411,7 @@ These cases support investigating a referral rule for uncertain predictions whil
 
 ### 7.3 Validation-Based Referral Rule
 
-An exploratory confidence-based referral rule was investigated using the validation set. Predictions with confidence below a threshold would be referred for human review, while predictions at or above the threshold would be retained.
+An exploratory confidence-based referral rule was first investigated for GFNet using the validation set. Predictions with confidence below a threshold would be referred for human review, while predictions at or above the threshold would be retained.
 
 Candidate thresholds ranged from 0.50 to 0.99 in increments of 0.01. The selection criteria required retained-set accuracy of at least 90% and coverage of at least 10%. Among qualifying candidates, the threshold with the highest coverage would be selected. These criteria were experimental targets rather than clinical safety standards.
 
@@ -684,3 +684,32 @@ The script saves the checkpoint with the lowest validation loss, together with `
 Saved checkpoints contain model weights only. They do not contain the optimizer and scheduler states required for exact training resumption.
 
 The standalone files passed syntax checks, and checkpoint inference was verified for both models. The complete standalone training workflow has not been rerun end to end; the reported training experiments were performed in the notebooks. Fresh training runs may differ numerically because of execution order and nondeterministic GPU operations.
+
+## 11. Artificial Intelligence Usage Disclosure
+
+ChatGPT was used to assist with conceptual explanations, code development and debugging, experimental analysis, and report drafting.
+
+Specific assistance included:
+
+- Explaining GFNet components, residual connections, model dimensions, checkpoint selection, and evaluation metrics.
+- Reviewing data-loading and splitting code, identifying patient-level leakage risks, and suggesting checks for patient independence and label consistency.
+- Suggesting model configurations and training modifications for experimental investigation.
+- Providing code for classification metrics, confidence analysis, representative failure-case selection, validation-based referral thresholds, and inference benchmarking.
+- Helping refactor notebook code into `modules.py`, `dataset.py`, `train.py`, and `predict.py`.
+- Drafting and revising report sections, tables, captions, and usage instructions based on the recorded experiments.
+
+AI-generated suggestions were checked against the project code and experimental outputs. Verification included patient-overlap assertions, dataset-size and label checks, model input/output shape checks, checkpoint reloading, and consistency checks between classification metrics and confusion matrices.
+
+The standalone prediction scripts were executed using the saved CNN and GFNet checkpoints. Their reported test metrics matched the corresponding notebook results to the displayed precision. The complete standalone training workflow was not rerun end to end; the reported training results were obtained from the notebooks.
+
+The reported numerical results come from executed experiments rather than AI-generated estimates. I take responsibility for the submitted code, interpretation, references, and experimental claims, including the limitations of the evaluation.
+
+## 12. References
+
+[1] Y. Rao, W. Zhao, Z. Zhu, J. Lu, and J. Zhou, “Global Filter Networks for Image Classification,” in *Advances in Neural Information Processing Systems*, vol. 34, 2021. Available: https://papers.neurips.cc/paper_files/paper/2021/hash/07e87c2f4fc7f7c96116d8e2a92790f5-Abstract.html
+
+[2] Y. Rao et al., “GFNet: Official PyTorch Implementation,” GitHub repository. Available: https://github.com/raoyongming/GFNet. Accessed: 31 October 2026.
+
+[3] Alzheimer’s Disease Neuroimaging Initiative, “ADNI Data.” Available: https://adni.loni.usc.edu/data-samples/adni-data/. Accessed: 31 October 2026.
+
+[4] COMP3710/COMP7710 Course Teaching Team, *Pattern Recognition Report: Working Prototype Project in the Era of Artificial Intelligence*, Version 2.5 Final Assessment Specification, School of EECS, The University of Queensland, 2026.
