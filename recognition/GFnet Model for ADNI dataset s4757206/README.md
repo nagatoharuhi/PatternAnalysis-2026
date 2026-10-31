@@ -321,7 +321,11 @@ The CNN achieved slightly higher accuracy, balanced accuracy, macro-F1, and AURO
 
 The GFNet test accuracy of 71.51% did not meet the initial 80% acceptance target. This result is reported without substituting validation accuracy or results from earlier model versions.
 
-![CNN ROC curve](dataset/report/cnn_roc_curve.png)
+<!-- ![CNN ROC curve](dataset/report/cnn_roc_curve.png) -->
+<p align="center">
+  <img src="dataset/report/cnn_roc_curve.png"
+       alt="CNN ROC curve" width="500">
+</p>
 
 *Figure 5. CNN test ROC curve, with AD as the positive class. AUROC = 0.7939.*
 
