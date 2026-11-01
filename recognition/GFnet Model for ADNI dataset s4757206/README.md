@@ -660,6 +660,7 @@ reproduce every analysis presented in this report.
 ├── train.py
 ├── predict.py
 ├── utils.py
+├── test.ipynb
 ├── dataset/
 │   ├── processed/
 │   │   └── image_records.csv
@@ -702,6 +703,8 @@ reproduce every analysis presented in this report.
         ├── train.py
         └── predict.py
 ```
+
+The root-level `test.ipynb` records the Colab commands and outputs used to verify data preparation and the standalone training and evaluation workflows.
 
 The directory tree shows the main submission files and report figures.
 The commands in Sections 10.3–10.5 use the Python scripts in the project
