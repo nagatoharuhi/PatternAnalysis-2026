@@ -622,6 +622,7 @@ These versions describe the environment used for script verification. Exact nume
 | `dataset.py` | Implements patient-level splitting, split validation, image-path resolution, transforms, datasets, and DataLoaders |
 | `train.py` | Trains a selected model, validates performance, saves the best checkpoint and training history, and optionally evaluates the best checkpoint on the test set. |
 | `predict.py` | Loads a saved checkpoint and generates test metrics, prediction records, a confusion matrix, and a ROC curve |
+| `utils.py` | Scans extracted images, maps image IDs to patient identifiers, calls the splitting functions in `dataset.py`, and optionally checks generated CSVs against notebook outputs |
 
 The project was initially developed in Jupyter notebooks on Google
 Colab to support interactive debugging, data inspection, and experimental
@@ -635,6 +636,11 @@ inventory and patient-independent split CSVs required by the standalone
 scripts. The CNN and GFNet notebooks contain the confidence, referral, and
 resource-profiling analyses. The GFNet notebook additionally contains
 the representative failure-case analysis.
+
+An additional helper, `utils.py`, provides a command-line entry point
+for the inventory and split-generation workflow originally implemented
+in the first two notebooks. It reuses the patient-level splitting and
+validation functions in `dataset.py`.
 
 The standalone scripts support training and checkpoint evaluation once
 the data and split CSVs have been prepared. They do not independently
@@ -653,6 +659,7 @@ reproduce every analysis presented in this report.
 ├── modules.py
 ├── train.py
 ├── predict.py
+├── utils.py
 ├── dataset/
 │   ├── processed/
 │   │   └── image_records.csv
@@ -697,8 +704,9 @@ reproduce every analysis presented in this report.
 ```
 
 The directory tree shows the main submission files and report figures.
-The four Python scripts in the project root are the entry points used
-by the commands in Sections 10.4–10.5. The `notebooks/` directory contains
+The commands in Sections 10.3–10.5 use the Python scripts in the project
+root. `utils.py` prepares the data records, while `train.py` and
+`predict.py` perform training and checkpoint evaluation. The `notebooks/` directory contains
 the experimental notebooks, while `results/` contains saved experimental
 outputs. The `script_full/` directory contains an additional extended
 script version and is not used by those commands.
@@ -727,6 +735,43 @@ The scripts check patient independence and image-path overlap. Before loading te
 
 Datasets and model weights are not included in the Git repository. Users must obtain the course dataset and either provide compatible checkpoints or train the models.
 
+#### Standalone Data Preparation
+
+As an alternative to running the first two notebooks, use `utils.py`
+to prepare the inventory and patient-independent splits. Place it beside
+`dataset.py`. The images must already be extracted into the original
+`train/AD`, `train/NC`, `test/AD`, and `test/NC` directory structure.
+The script does not extract archives or modify image pixels.
+
+The following command was verified in Colab:
+
+```python
+%cd /content/drive/MyDrive/COMP3710/project/scripts
+
+!python utils.py \
+    --image-root "/content/drive/MyDrive/COMP3710/project/dataset/raw/ADNI/AD_NC" \
+    --metadata "/content/drive/MyDrive/COMP3710/project/dataset/raw/ADNI/meta_data_with_label.json" \
+    --output-dir "/content/drive/MyDrive/COMP3710/project/dataset/preparation_check_01" \
+    --reference-inventory "/content/drive/MyDrive/COMP3710/project/dataset/processed/image_records.csv" \
+    --reference-split-dir "/content/drive/MyDrive/COMP3710/project/dataset/splits"
+```
+
+The reference arguments are optional and check equivalence against
+existing notebook outputs. Omit both reference arguments when preparing
+data for the first time. Use a new or empty output directory.
+
+The command saves `processed/image_records.csv`, the three CSVs under
+`splits/`, and `preparation_summary.json` inside the output directory.
+For subsequent training or prediction using these generated splits,
+set `--split-dir` to the output directory's `splits/` subdirectory.
+
+Verification reproduced the original inventory of 30,521 images from
+680 patients and excluded the previously identified duplicate from the
+final splits. Training, validation, and test sets contained 21,620,
+4,460, and 4,440 images, respectively. Both reference checks passed:
+columns, row order, identifiers, labels, and paths matched the existing
+notebook CSVs.
+
 ### 10.4 Verified Checkpoint Evaluation
 
 Before running the commands below:
@@ -744,7 +789,11 @@ does not require an existing checkpoint.
 
 Skip steps 1–2 if the image inventory and final split CSVs have
 already been prepared. Restore the image cache whenever a new
-Colab runtime is started.
+Colab runtime is started. 
+
+Alternatively, replace steps 1–2 with the `utils.py` workflow in
+Section 10.3, after making the extracted images available. When using
+its generated splits, update `--split-dir` accordingly.
 
 The commands below were verified in Colab after mounting Google Drive and extracting the images. They use the project paths from the experiments; other users should substitute their own paths.
 
@@ -823,7 +872,24 @@ The script saves the checkpoint with the lowest validation loss, together with `
 
 Saved checkpoints contain model weights only. They do not contain the optimizer and scheduler states required for exact training resumption.
 
-The standalone files passed syntax checks, and checkpoint inference was verified for both models. The complete standalone training workflow has not been rerun end to end; the reported training experiments were performed in the notebooks. Fresh training runs may differ numerically because of execution order and nondeterministic GPU operations.
+The standalone files passed syntax checks. Both models also passed
+a one-epoch end-to-end smoke test using the splits generated by
+`utils.py`. The tests covered training, validation, checkpoint saving
+and reloading, post-training testing with `--evaluate-test`, and
+separate checkpoint evaluation with `predict.py`.
+
+For each model, test loss and accuracy matched between `train.py`
+and `predict.py` to the displayed precision. The smoke tests loaded
+images directly from Google Drive rather than `/content/mri_cache`.
+They verified pipeline execution and checkpoint compatibility, not
+convergence or reproduction of the full training runs.
+
+The reported experimental results remain those obtained from the
+notebook training runs and verified checkpoint evaluations in
+Section 10.4. The full 10-epoch CNN and 30-epoch GFNet training runs
+were not repeated using the standalone scripts. Fresh training runs
+may differ numerically because of execution order and nondeterministic
+GPU operations.
 
 ## 11. Artificial Intelligence Usage Disclosure
 
@@ -837,10 +903,23 @@ Specific assistance included:
 - Providing code for classification metrics, confidence analysis, representative failure-case selection, validation-based referral thresholds, and inference benchmarking.
 - Helping refactor notebook code into `modules.py`, `dataset.py`, `train.py`, and `predict.py`.
 - Drafting and revising report sections, tables, captions, and usage instructions based on the recorded experiments.
+- Helping implement and document `utils.py`, compare its generated CSVs
+  with notebook outputs, and set up one-epoch standalone pipeline checks.
 
 AI-generated suggestions were checked against the project code and experimental outputs. Verification included patient-overlap assertions, dataset-size and label checks, model input/output shape checks, checkpoint reloading, and consistency checks between classification metrics and confusion matrices.
 
-The standalone prediction scripts were executed using the saved CNN and GFNet checkpoints. Their reported test metrics matched the corresponding notebook results to the displayed precision. The complete standalone training workflow was not rerun end to end; the reported training results were obtained from the notebooks.
+The standalone prediction scripts reproduced the reported notebook
+test metrics using the saved CNN and GFNet checkpoints. The data
+preparation helper was executed on the actual dataset, and its
+inventory and split records matched the notebook CSVs, including
+row order and paths.
+
+Both models subsequently passed one-epoch standalone training and
+evaluation smoke tests. Test loss and accuracy matched between the
+post-training evaluation and separate `predict.py` runs to the
+displayed precision. These checks verified pipeline execution;
+the full training experiments reported in this document were
+performed in the notebooks.
 
 The reported numerical results come from executed experiments rather than AI-generated estimates. I take responsibility for the submitted code, interpretation, references, and experimental claims, including the limitations of the evaluation.
 
